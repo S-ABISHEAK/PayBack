@@ -1,0 +1,16 @@
+{
+  "run_name": "system",
+  "n_cases": 242,
+  "rupees_at_risk": 703002.78,
+  "rupees_recovered": 401156.38,
+  "recovery_rate": 0.5706327078820371,
+  "retry_only_recovered_inr": 239797.84,
+  "escalation_assisted_recovered_inr": 161358.54,
+  "promise_precision": null,
+  "promise_recall": null,
+  "promise_f1": null,
+  "guardrail_violations": 0,
+  "avg_attempts_per_recovered": 1.2246376811594204,
+  "escalation_rate": 0.6446280991735537,
+  "audit_completeness": 1.0
+}

@@ -1,0 +1,122 @@
+# Drives src/retry/executor.py's RazorpayTestModeRetryExecutor: which test
+# card/UPI VPA to use to reproduce a given outcome against Razorpay's real
+# test-mode API, and how "retrying a subscription payment" is interpreted
+# in test mode.
+#
+# Sources (confirmed_primary — pulled from Razorpay's own docs/GitHub):
+#   - https://razorpay.com/docs/payments/payments/test-card-details/
+#   - https://razorpay.com/docs/payments/payments/test-upi-details/
+#   - https://github.com/razorpay/markdown-docs/blob/master/payments/payments/test-card-details.md
+# Note: live HTML tables returned incomplete via direct fetch; card numbers
+# were cross-checked against Razorpay's own GitHub docs-source mirror rather
+# than a visually-rendered page. Confidence: high/primary, sourced via mirror.
+
+execution_model:
+  status: "ASSUMPTION: interpretation of what constitutes a subscription 'retry' in Razorpay test mode"
+  justification: >
+    Razorpay's test mode does not expose a way to programmatically force a
+    live subscription's scheduled auto-charge to fail/retry on demand.
+    We simulate a bounded subscription retry as a fresh Order + Payment
+    against the subscription's linked customer, using the test card/VPA
+    below chosen to reproduce the diagnosed failure category's outcome.
+    This exercises real Razorpay test-mode API calls (visibly building on
+    Razorpay's own rails) while keeping outcomes reproducible for batch eval.
+
+test_cards_success:
+  status: confirmed_primary
+  entries:
+    - network: visa
+      number: "4100 2800 0000 1007"
+    - network: mastercard
+      number: "5500 6700 0000 1002"
+    - network: rupay
+      number: "6527 6589 0000 1005"
+  note: "Any future expiry date, any random CVV."
+
+test_cards_failure:
+  status: confirmed_primary
+  entries:
+    - reason: payment_timed_out
+      visa: "4100 2800 0009 0000"
+      mastercard: "5305 6200 0006 0000"
+    - reason: insufficient_fund
+      visa: "4100 2800 0008 0001"
+      mastercard: "5305 6200 0005 0001"
+    - reason: payment_cancelled
+      visa: "4100 2800 0007 0002"
+      mastercard: "5305 6200 0004 0002"
+    - reason: card_declined
+      visa: "4100 2800 0006 0003"
+      mastercard: "5305 6200 0003 0003"
+    - reason: card_disabled_for_online_payments
+      visa: "4100 2800 0003 0006"
+      mastercard: "5305 6200 0000 0006"
+    - reason: card_number_invalid
+      visa: "4100 2800 0001 0008"
+      mastercard: "5305 6200 0008 0008"
+    - reason: gateway_technical_error
+      visa: "4100 2800 0002 0007"
+      mastercard: "5305 6200 0009 0007"
+    - reason: authentication_failed
+      visa: "4100 2800 0000 0009"
+      mastercard: "5305 6200 0007 0009"
+
+test_cards_subscriptions:
+  status: confirmed_primary
+  entries:
+    - label: domestic_credit_visa
+      number: "4718 6091 0820 4366"
+    - label: international_credit_mastercard
+      number: "5104 0155 5555 5558"
+    - label: international_debit_mastercard
+      number: "5104 0600 0000 0008"
+
+test_upi:
+  status: confirmed_primary
+  success_vpa: "success@razorpay"
+  failure_vpa: "failure@razorpay"
+  note: >
+    In test mode, UPI cancellation actually resolves as success (only live
+    mode shows true cancellation behavior) — do not use UPI to simulate
+    payment_cancelled; use a failure-scenario card instead.
+  otp: "Any 4-10 digit value succeeds; under 4 digits fails (authentication_failed)."
+
+reason_to_test_instrument:
+  # Maps failure_taxonomy.yaml's observed_error_taxonomy reasons to the
+  # test_cards_failure entry above, so RazorpayTestModeRetryExecutor can
+  # deterministically reproduce a diagnosed category's real-API outcome.
+  insufficient_fund: insufficient_fund
+  payment_timed_out: payment_timed_out
+  payment_cancelled: payment_cancelled          # card-based only; see test_upi note
+  card_declined: card_declined
+  card_disabled_for_online_payments: card_disabled_for_online_payments
+  card_number_invalid: card_number_invalid
+  gateway_technical_error: gateway_technical_error
+  authentication_failed: authentication_failed
+  # No dedicated test card confirmed for these — fall back to nearest analog,
+  # marked explicitly so it's not silently wrong:
+  incorrect_cvv:
+    status: ASSUMPTION
+    fallback: card_number_invalid
+    justification: "No distinct test-card entry found for incorrect_cvv; reuses the invalid-number card as the nearest reproducible failure."
+  card_expired:
+    status: ASSUMPTION
+    fallback: card_number_invalid
+    justification: "No distinct test-card entry found for card_expired; reuses the invalid-number card as the nearest reproducible failure."
+  transaction_limit_exceeded:
+    status: ASSUMPTION
+    fallback: card_declined
+    justification: "No distinct test-card entry found; generic decline card used as nearest reproducible analog."
+  debit_instrument_inactive:
+    status: ASSUMPTION
+    fallback: card_disabled_for_online_payments
+  debit_instrument_blocked:
+    status: ASSUMPTION
+    fallback: card_disabled_for_online_payments
+  payment_risk_check_failed:
+    status: ASSUMPTION
+    fallback: card_declined
+  bank_technical_error:
+    status: ASSUMPTION
+    fallback: gateway_technical_error
+    justification: "bank_technical_error reason is documented under GATEWAY_ERROR but has no distinct test card; reuses gateway_technical_error's card."

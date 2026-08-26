@@ -1,0 +1,117 @@
+{
+  "accuracy": 0.8181818181818182,
+  "avg_confidence": 0.7318595041322314,
+  "n_dev": 558,
+  "n_holdout": 242,
+  "classification_report": {
+    "customer_declined_intentional": {
+      "precision": 0.9545454545454546,
+      "recall": 0.9130434782608695,
+      "f1-score": 0.9333333333333333,
+      "support": 23.0
+    },
+    "expired_invalid_instrument": {
+      "precision": 0.7777777777777778,
+      "recall": 0.9459459459459459,
+      "f1-score": 0.8536585365853658,
+      "support": 37.0
+    },
+    "insufficient_funds": {
+      "precision": 0.8405797101449275,
+      "recall": 0.8405797101449275,
+      "f1-score": 0.8405797101449275,
+      "support": 69.0
+    },
+    "mandate_limit_related": {
+      "precision": 0.8484848484848485,
+      "recall": 0.9333333333333333,
+      "f1-score": 0.8888888888888888,
+      "support": 30.0
+    },
+    "temporary_bank_side_failure": {
+      "precision": 0.84,
+      "recall": 0.8571428571428571,
+      "f1-score": 0.8484848484848485,
+      "support": 49.0
+    },
+    "unknown_ambiguous": {
+      "precision": 0.6086956521739131,
+      "recall": 0.4117647058823529,
+      "f1-score": 0.49122807017543857,
+      "support": 34.0
+    },
+    "accuracy": 0.8181818181818182,
+    "macro avg": {
+      "precision": 0.8116805738544869,
+      "recall": 0.8169683384517143,
+      "f1-score": 0.8093622312688004,
+      "support": 242.0
+    },
+    "weighted avg": {
+      "precision": 0.810093061408189,
+      "recall": 0.8181818181818182,
+      "f1-score": 0.8099016989616296,
+      "support": 242.0
+    }
+  },
+  "confusion_matrix": {
+    "labels": [
+      "customer_declined_intentional",
+      "expired_invalid_instrument",
+      "insufficient_funds",
+      "mandate_limit_related",
+      "temporary_bank_side_failure",
+      "unknown_ambiguous"
+    ],
+    "matrix": [
+      [
+        21,
+        0,
+        1,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        35,
+        0,
+        1,
+        1,
+        0
+      ],
+      [
+        1,
+        5,
+        58,
+        3,
+        0,
+        2
+      ],
+      [
+        0,
+        2,
+        0,
+        28,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0,
+        0,
+        42,
+        6
+      ],
+      [
+        0,
+        2,
+        10,
+        1,
+        7,
+        14
+      ]
+    ]
+  }
+}

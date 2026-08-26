@@ -1,0 +1,68 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Virtualenvs ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Test / lint / type-check caches ---
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Editors / IDEs ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+
+# --- This project's own generated/runtime artifacts ---
+*.db
+*.sqlite3
+models/hinglish/checkpoints/
+models/hinglish/*.gguf
+
+# --- Scratch/draft notes some editors or habits leave behind — never the
+# --- project's real docs (README.md, docs/*.md, CLAUDE_CODE_PROJECT_CONTEXT.md,
+# --- evaluation/experiments/rubric_prompt.md are all tracked deliberately).
+NOTES.md
+TODO.md
+SCRATCH.md
+DRAFT*.md
+*.draft.md
+
+# NOTE: data/samples/*.jsonl and evaluation/reports/*.json are intentionally
+# NOT ignored — they're the frozen dataset and the evaluation evidence a
+# panelist reviews directly. *.db (the audit trail) stays ignored: it's a
+# large, non-diff-friendly binary that accumulates across every dev run and
+# regenerates in seconds (`python scripts/run_system_eval.py`); the JSON/
+# JSONL reports already capture its evidence in reviewable form.

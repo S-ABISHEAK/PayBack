@@ -1,0 +1,92 @@
+{
+  "failure_category": {
+    "customer_declined_intentional": {
+      "n_cases": 23,
+      "baseline_recovery_rate": 0.016936969846977654,
+      "system_recovery_rate": 0.037788543385234144,
+      "uplift": 0.02085157353825649
+    },
+    "expired_invalid_instrument": {
+      "n_cases": 37,
+      "baseline_recovery_rate": 0.0029582571109554195,
+      "system_recovery_rate": 0.5220764693453928,
+      "uplift": 0.5191182122344373
+    },
+    "insufficient_funds": {
+      "n_cases": 69,
+      "baseline_recovery_rate": 0.06294742665600137,
+      "system_recovery_rate": 0.6283568632180314,
+      "uplift": 0.56540943656203
+    },
+    "mandate_limit_related": {
+      "n_cases": 30,
+      "baseline_recovery_rate": 0.013419579867820722,
+      "system_recovery_rate": 0.5777784371148048,
+      "uplift": 0.5643588572469841
+    },
+    "temporary_bank_side_failure": {
+      "n_cases": 49,
+      "baseline_recovery_rate": 0.6044643683231934,
+      "system_recovery_rate": 0.8209050829811612,
+      "uplift": 0.21644071465796777
+    },
+    "unknown_ambiguous": {
+      "n_cases": 34,
+      "baseline_recovery_rate": 0.23984768486604535,
+      "system_recovery_rate": 0.635897992947004,
+      "uplift": 0.39605030808095865
+    }
+  },
+  "amount_bucket": {
+    "high": {
+      "n_cases": 106,
+      "baseline_recovery_rate": 0.1764719585083681,
+      "system_recovery_rate": 0.5723491087032155,
+      "uplift": 0.3958771501948474
+    },
+    "low": {
+      "n_cases": 67,
+      "baseline_recovery_rate": 0.17763176712390338,
+      "system_recovery_rate": 0.5065466437299184,
+      "uplift": 0.32891487660601504
+    },
+    "mid": {
+      "n_cases": 69,
+      "baseline_recovery_rate": 0.16064217200570372,
+      "system_recovery_rate": 0.5752146275660683,
+      "uplift": 0.4145724555603646
+    }
+  },
+  "attempt_count": {
+    "0": {
+      "n_cases": 117,
+      "baseline_recovery_rate": 0.2144434711693706,
+      "system_recovery_rate": 0.6113915394238415,
+      "uplift": 0.39694806825447093
+    },
+    "1": {
+      "n_cases": 62,
+      "baseline_recovery_rate": 0.19772106474936582,
+      "system_recovery_rate": 0.6153598145661685,
+      "uplift": 0.4176387498168027
+    },
+    "2": {
+      "n_cases": 29,
+      "baseline_recovery_rate": 0.08268725863886633,
+      "system_recovery_rate": 0.4119724237649901,
+      "uplift": 0.32928516512612377
+    },
+    "3": {
+      "n_cases": 23,
+      "baseline_recovery_rate": 0.0114930131576562,
+      "system_recovery_rate": 0.3523134155221194,
+      "uplift": 0.3408204023644632
+    },
+    "4+": {
+      "n_cases": 11,
+      "baseline_recovery_rate": 0.0,
+      "system_recovery_rate": 0.4546178288982433,
+      "uplift": 0.4546178288982433
+    }
+  }
+}

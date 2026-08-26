@@ -1,0 +1,16 @@
+{
+  "run_name": "naive_baseline",
+  "n_cases": 242,
+  "rupees_at_risk": 703002.78,
+  "rupees_recovered": 122745.0,
+  "recovery_rate": 0.17460101651376114,
+  "retry_only_recovered_inr": 122745.0,
+  "escalation_assisted_recovered_inr": 0.0,
+  "promise_precision": null,
+  "promise_recall": null,
+  "promise_f1": null,
+  "guardrail_violations": 0,
+  "avg_attempts_per_recovered": 1.5555555555555556,
+  "escalation_rate": 0.0,
+  "audit_completeness": null
+}

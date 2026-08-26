@@ -1,0 +1,83 @@
+# Failure taxonomy for the synthetic payment-recovery engine.
+#
+# Two layers, deliberately kept separate to avoid classifier label leakage
+# (see data/generators/failure_generator.py design):
+#   - ground_truth_categories: the hidden `true_cause` the generator samples from.
+#     Used only for eval metrics / recovery-potential derivation. NEVER fed to
+#     the diagnosis classifier as a feature.
+#   - observed_error_taxonomy: Razorpay's real error-object shape and reason
+#     strings. This is what the classifier actually sees, with a many-to-one /
+#     noisy mapping from ground_truth_categories (see generator_mapping below).
+#
+# Sources (primary unless marked ASSUMPTION):
+#   - https://razorpay.com/docs/errors/
+#   - https://razorpay.com/docs/api/errors/
+#   - https://razorpay.com/docs/errors/payments/cards/
+#   - https://razorpay.com/docs/errors/common/
+
+ground_truth_categories:
+  - id: insufficient_funds
+    description: Customer's account/instrument lacked funds/limit at debit time.
+  - id: temporary_bank_side_failure
+    description: Transient failure on the bank/gateway side, unrelated to customer intent or funds.
+  - id: mandate_limit_related
+    description: Mandate/AFA amount limit exceeded, or instrument inactive/blocked at the mandate level.
+  - id: expired_invalid_instrument
+    description: Card/instrument expired, invalid, or disabled for this payment type.
+  - id: customer_declined_intentional
+    description: Customer actively cancelled, refused OTP, or otherwise intentionally did not complete payment.
+  - id: unknown_ambiguous
+    description: Generic/uninformative failure with no reliable signal pointing to a specific cause.
+
+# Razorpay's real error object: {code, description, field, source, step, reason, metadata}
+# code: top-level category. Confirmed: BAD_REQUEST_ERROR, GATEWAY_ERROR.
+#   ASSUMPTION: SERVER_ERROR exists as a third top-level code (referenced only in
+#   secondary material; not independently confirmed on a primary page).
+observed_error_taxonomy:
+  BAD_REQUEST_ERROR:
+    - reason: insufficient_fund
+    - reason: payment_timed_out
+    - reason: payment_cancelled
+    - reason: card_declined
+    - reason: card_disabled_for_online_payments
+    - reason: card_number_invalid
+    - reason: incorrect_cvv
+    - reason: card_expired
+    - reason: transaction_limit_exceeded
+    - reason: debit_instrument_inactive
+    - reason: debit_instrument_blocked
+    - reason: payment_risk_check_failed
+  GATEWAY_ERROR:
+    - reason: gateway_technical_error
+    - reason: authentication_failed   # e.g. bad/expired OTP
+    - reason: bank_technical_error
+
+# source/step fields Razorpay attaches to each error, used as extra (noisy,
+# non-deterministic) observed features in the generator, not ground truth.
+observed_metadata_fields:
+  source: [customer, bank, gateway]
+  step: [payment_authentication, payment_authorization, payment_processing]
+
+# Class-conditional mapping used by the generator (many-to-one + noise, NOT a
+# lookup table — see data/generators/failure_generator.py for the actual
+# probabilistic implementation). This lists which observed reasons are
+# *plausible* under each ground-truth cause; the generator additionally
+# resamples ~10-15% of cases' observed reason independent of true cause, and
+# randomly drops context fields, so the mapping below is never applied
+# deterministically.
+generator_mapping:
+  insufficient_funds:
+    plausible_reasons: [insufficient_fund, payment_risk_check_failed]
+  temporary_bank_side_failure:
+    plausible_reasons: [payment_timed_out, gateway_technical_error, bank_technical_error]
+  mandate_limit_related:
+    plausible_reasons: [transaction_limit_exceeded, debit_instrument_inactive, debit_instrument_blocked]
+  expired_invalid_instrument:
+    plausible_reasons: [card_expired, card_number_invalid, incorrect_cvv, card_disabled_for_online_payments]
+  customer_declined_intentional:
+    plausible_reasons: [payment_cancelled, authentication_failed]
+  unknown_ambiguous:
+    plausible_reasons: [payment_risk_check_failed, gateway_technical_error, card_declined]
+
+notes:
+  - "ASSUMPTION: SERVER_ERROR as a third top-level `code` category — seen only in secondary material, not confirmed on a primary Razorpay page. Not used in generator_mapping above; add only if independently confirmed."

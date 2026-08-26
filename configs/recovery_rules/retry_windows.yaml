@@ -1,0 +1,80 @@
+# Retry-rail rules governing when/how many times a failed recurring payment
+# may be retried, and subscription state transitions. Every rule below is
+# either "confirmed_primary" (fetched directly from Razorpay/RBI's own docs)
+# or "ASSUMPTION" (secondary-sourced or inferred, with justification).
+#
+# Research pass: 2026-08-26, timeboxed to 1 day per Phase 0. Primary sources:
+#   - https://razorpay.com/docs/payments/subscriptions/states/
+#   - https://razorpay.com/docs/payments/subscriptions/payment-retries/
+#   - https://razorpay.com/docs/webhooks/subscriptions/
+#   - https://rbi.org.in/scripts/NotificationUser.aspx?Mode=0&Id=13374  (E-mandate Framework 2026, RBI/DPSS/2026-27/396)
+#   - NPCI UPI Autopay circular (NPCI/UPI/OC/215 & OC/223, 2025-26) — PDF returned
+#     HTTP 403 on direct fetch; figures below are corroborated across multiple
+#     independent secondary sources reporting the same circular numbers, but
+#     were NOT read from the primary PDF directly. Labeled ASSUMPTION per policy.
+
+subscription_states:
+  status: confirmed_primary
+  source: https://razorpay.com/docs/payments/subscriptions/states/
+  states: [created, authenticated, active, pending, halted, paused, cancelled, expired, completed]
+  transitions:
+    - "active -> pending: entered when a scheduled auto-charge fails; subscription is retried"
+    - "pending -> halted: entered when the last auto-charge fails AND all retries are exhausted (exact phrase from Razorpay docs)"
+    - "halted: no further auto-charge attempted; invoices still generate; recovery requires customer re-authentication/payment-method update"
+
+webhook_events:
+  status: confirmed_primary
+  source: https://razorpay.com/docs/webhooks/subscriptions/
+  events: [subscription.authenticated, subscription.activated, subscription.charged, subscription.completed,
+           subscription.updated, subscription.pending, subscription.halted, subscription.paused,
+           subscription.resumed, subscription.cancelled]
+
+retry_cadence:
+  card_upi_general:
+    status: confirmed_primary
+    source: https://razorpay.com/docs/payments/subscriptions/payment-retries/
+    rule: "Auto-charge is retried the following day after a failure. Razorpay waits for confirmation/rejection of the last attempt (may exceed 24h) before scheduling the next retry."
+  e_mandate_bank_debit_holiday_shift:
+    status: confirmed_primary
+    source: https://razorpay.com/docs/payments/subscriptions/payment-retries/
+    rule: "If scheduled retry date T is a bank holiday, retry shifts to T-1. If both T and T-1 are holidays, shifts to T-3."
+  max_retries_before_halted:
+    status: "ASSUMPTION: count not stated on Razorpay's primary retry-schedule page — only the qualitative retry-then-halt behavior is primary-confirmed"
+    value: 4
+    justification: "Adopted from NPCI UPI Autopay's corroborated '1 original + 3 retries = 4 total attempts' figure (see upi_autopay below) as the working number, since it is qualitatively consistent with Razorpay's own retry-then-halt behavior and is the most well-corroborated concrete count found. Treat as a configurable assumption, not a confirmed Razorpay rule."
+  rejected_claim:
+    status: explicitly_rejected
+    claim: "24h / 72h / day-7 retry cadence"
+    reason: "Found only in a single secondary blog (productgrowth.in) presented as merchant best-practice advice, not an NPCI/Razorpay rule. Not encoded anywhere in this system."
+
+upi_autopay:
+  status: "ASSUMPTION: NPCI primary PDF (npci.org.in) returned HTTP 403 on direct fetch. Figures below are corroborated across multiple independent secondary sources citing the same circular (NPCI/UPI/OC/215 & OC/223, 2025-26, effective 2025-08-01) but were not read from the primary document itself."
+  max_total_attempts: 4          # 1 original execution + 3 retries
+  retry_restricted_to_non_peak_hours: true
+  peak_hours_ist:                # excluded from retry attempts
+    - "10:00-13:00"
+    - "17:00-21:30"
+  sources_secondary:
+    - https://gokiwi.in/blog/major-changes-by-npci-on-upi-in-2025/
+    - https://www.indusface.com/blog/npci-upi-api-security-guidelines/
+    - https://paytm.com/blog/payments/upi/upi-rules-update-august-1-npci-new-guidelines/
+    - https://www.newsbytesapp.com/news/business/npci-caps-upi-balance-checks-restricts-autopay-to-non-peak-hours/story
+
+rbi_e_mandate_afa:
+  status: confirmed_primary
+  source: "https://rbi.org.in/scripts/NotificationUser.aspx?Mode=0&Id=13374 (Digital Payments – E-mandate Framework, RBI/DPSS/2026-27/396, dated 2026-04-21)"
+  pre_debit_notification_min_hours: 24
+  pre_debit_notification_must_include: [merchant_name, amount, debit_date_time, mandate_reference_number, reason_for_debit]
+  afa_free_threshold_inr: 15000
+  afa_free_carveout_categories: [insurance_premium, mutual_fund_subscription, credit_card_bill_payment]
+  afa_free_carveout_threshold_inr: 100000
+  customer_can_opt_out: true
+  retry_rules_specified_by_rbi: false
+  retry_rules_note: "Confirmed absence, not a gap in search: the RBI framework governs registration, pre-debit notification, and AFA thresholds only. Retry count/window mechanics for failed debits are left to NPCI (UPI) and card networks (see upi_autopay above), not mandated by this RBI circular. Any claim attributing a specific retry count to RBI directly should be treated as incorrect."
+
+contact_attempt_limits:
+  status: "ASSUMPTION: no primary source specifies escalation/contact-attempt limits for a Hinglish recovery agent — this is a product-safety configuration for this system, not a payment-rail rule"
+  max_contact_attempts: 3
+  justification: "Set to mirror the NPCI Autopay 'max 4 total execution attempts' order of magnitude, keeping customer contact volume bounded. Configurable in guardrails, not a compliance requirement."
+  odd_hour_contact_restricted: true
+  contact_quiet_hours_ist: ["21:30-09:00"]

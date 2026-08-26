@@ -1,0 +1,34 @@
+# Core
+python-dotenv
+pydantic>=2
+pyyaml
+
+# Data / ML
+numpy
+pandas
+scikit-learn
+xgboost
+
+# Storage
+sqlalchemy>=2
+
+# Dashboard
+streamlit
+
+# Razorpay integration
+razorpay
+
+# Local LLM (Ollama HTTP API) + LLM-judge client
+requests
+anthropic
+
+# LLM / fine-tuning (installed in Phase 3/7 — heavy, keep out of the base dev env if not yet needed)
+# transformers
+# peft
+# trl
+# bitsandbytes
+# unsloth
+# outlines
+
+# Testing
+pytest
