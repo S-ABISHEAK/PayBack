@@ -77,13 +77,14 @@ inspectable and replayable (`python scripts/replay_case.py <case_id>`).
 
 ## Status
 
-Phases 0–6 and 8 (submission hardening, for the current state) are done. **Phase 7
-(fine-tuning the Hinglish agent) is deferred** — pending local Ollama/LLM-judge setup
-— so the system ships today evaluated on a *prompted* agent (`MODEL_BACKEND=stub` in
-the frozen reports; `MODEL_BACKEND=prompted` is built and wired but its live
-conversation/rubric run hasn't executed yet). Nothing else depends on this: the full
-loop, guardrails, and adversarial tests are all built and verified without it. Full
-history: [docs/build_log.md](docs/build_log.md).
+Phases 0–6 and 8 (submission hardening, for the current state) are done. Ollama is
+now installed locally with `qwen2.5:3b` pulled, and the prompted escalation agent has
+been verified with a real live conversation (see `docs/build_log.md` Phase 3 for the
+prompt-quality issues found and fixed along the way). **Still open:** an
+`LLM_JUDGE_API_KEY`/`ANTHROPIC_API_KEY` for the full rubric score, and **Phase 7**
+(fine-tuning) remains deferred. Nothing else depends on either: the full loop,
+guardrails, and adversarial tests are all built and verified independent of them.
+Full history: [docs/build_log.md](docs/build_log.md).
 
 ## Setup
 

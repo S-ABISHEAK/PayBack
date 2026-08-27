@@ -66,3 +66,6 @@ DRAFT*.md
 # large, non-diff-friendly binary that accumulates across every dev run and
 # regenerates in seconds (`python scripts/run_system_eval.py`); the JSON/
 # JSONL reports already capture its evidence in reviewable form.
+
+*.md
+!/README.md

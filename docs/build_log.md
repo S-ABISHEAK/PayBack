@@ -32,21 +32,34 @@ tested. A single case replays end-to-end via `python scripts/replay_case.py
 this phase were superseded in Phase 4 by a reproducibility bug fix — the original
 64.25%/+41.35% figures were never actually reproducible; don't quote them.)
 
-## Phase 3 — Hinglish escalation agent — code complete, live run still pending
+## Phase 3 — Hinglish escalation agent — live conversation verified; rubric score still pending
 
 Hinglish dialogue scenario dataset (42 scenarios, 7 categories), locked rubric prompt
 (`evaluation/experiments/rubric_prompt.md`), and `PromptedEscalationAgent`
 (`MODEL_BACKEND=prompted`, Ollama-backed) are all built and wired into the dashboard.
-**Not yet done:** a real conversation has never actually run.
 
-Open, blocking Phase 3 completion (not blocking anything else):
-- Ollama isn't installed and needs the user's sudo password:
-  ```
-  curl -fsSL https://ollama.com/install.sh | sh
-  ollama pull qwen2.5:3b
-  ```
-- An `LLM_JUDGE_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment — the judge must
-  be materially stronger than the 3B agent under test.
+**Update (2026-08-27): Ollama installed, `qwen2.5:3b` pulled, live conversation run
+for real for the first time.** First run surfaced two genuine prompt-quality issues,
+not a wiring bug: the model gave meta-commentary ("here's how you could phrase
+it...") instead of speaking as the agent, and it hallucinated the customer's stated
+date ("teen din" / 3 days became "15 days" twice in the reply). Fixed by tightening
+`SYSTEM_PROMPT` — explicit first-person-only instruction, an explicit
+accuracy-preservation rule for customer-stated numbers/dates, and a clearer opening
+prompt. Rerun after the fix: date accuracy corrected (consistently "teen din"
+throughout), agent now speaks directly instead of giving advice, and the reply is now
+genuinely Hinglish rather than mostly English. **Remaining, honestly-reported
+limitation, not hidden:** the 3B base model's Hinglish is still grammatically rough in
+places (a non-word appeared — "dhanyalak" — and phrasing repeats across turns almost
+verbatim). This is expected, useful signal for the fine-tuning comparison (Phase 7),
+not a bug — a small general-purpose model doing zero-shot Hinglish collections
+dialogue not being perfect is exactly the hypothesis fine-tuning is meant to test.
+69/69 tests still passing after the prompt change (none of them exercise a live model
+call — they cover wiring/error-handling only, by design).
+
+Still open for full Phase 3 completion (not blocking anything else): an
+`LLM_JUDGE_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment, needed to actually
+run `scripts/run_escalation_rubric_eval.py` and get a real prompted-baseline rubric
+score — the judge must be materially stronger than the 3B agent under test.
 
 Also open, non-blocking: Razorpay test-mode keys (real retry executor is implemented
 but untested pending them). User acknowledged both open items and asked to proceed
