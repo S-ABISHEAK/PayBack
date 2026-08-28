@@ -70,3 +70,4 @@ DRAFT*.md
 *.md
 !/README.md
 *.json
+docs/

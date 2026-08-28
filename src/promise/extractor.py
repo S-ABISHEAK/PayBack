@@ -105,7 +105,7 @@ object, no other text: \
 
 class LLMPromiseExtractor(PromiseExtractor):
     def __init__(self, model: str | None = None, base_url: str | None = None):
-        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
+        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
         self._base_url = base_url or os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
     def _call(self, prompt: str) -> str:

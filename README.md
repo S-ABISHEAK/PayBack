@@ -25,15 +25,23 @@ Panel Q&A: [docs/panel_questions.md](docs/panel_questions.md). Failure story:
 | Guardrail violations | **0** |
 | Diagnosis classifier accuracy (held-out) | 81.8% |
 | Promise extraction P/R/F1 | 100%¹ |
-| Prompted Hinglish agent rubric score (42 scenarios) | 1.75/5² |
+| Prompted Hinglish agent rubric score, qwen2.5:3b (42 scenarios) | 1.75/5² |
+| Prompted Hinglish agent rubric score, qwen2.5:7b (42 scenarios) | **3.63/5²** |
 
 ¹ Self-consistency check on the rule-based extractor's own hand-authored vocabulary —
 see [docs/build_log.md](docs/build_log.md#phase-4--promise-tracking--done), not
 evidence of generalization.
 
-² Genuinely low, reported as-is — the 3B prompted agent's real limitation on
-zero-shot Hinglish, not a bug, and the concrete case for the (currently deferred)
-fine-tuning experiment. See [docs/build_log.md](docs/build_log.md) Phase 3.
+² Both reported as-is. `qwen2.5:3b` scores genuinely low on zero-shot Hinglish; a
+few-shot prompt barely moved it (1.75 → 1.79). Swapping to `qwen2.5:7b` (same prompt,
+no fine-tuning) nearly doubled the score to 3.19 — clear evidence the 3B ceiling was
+model capacity, not prompting. Lowering generation temperature (0.4) and adding a
+bounded regenerate-on-degenerate-output retry (catches CJK-script corruption and
+near-verbatim turn repeats — same validate-then-repair pattern as the promise
+extractor) raised it further to **3.63/5**. `qwen2.5:7b` with these settings is now
+the default (`OLLAMA_MODEL`) and the real baseline the (currently deferred)
+fine-tuning experiment has to beat. See [docs/build_log.md](docs/build_log.md)
+Phase 3.
 
 Both baseline and system run over the identical held-out population with the same
 multi-attempt budget — the baseline just never escalates. Slice analysis shows uplift
@@ -83,13 +91,15 @@ inspectable and replayable (`python scripts/replay_case.py <case_id>`).
 ## Status
 
 **Phases 0–6 and 8 are done. Phase 3 is now fully complete**, including the
-prompted-baseline rubric score: the `qwen2.5:3b` escalation agent scored
-**1.75/5 overall** (1.83 tone / 1.93 task success / 1.48 code-switching) across all
-42 dialogue scenarios, judged by Groq's `qwen/qwen3.8-27b`. That's a genuinely low
-score, reported as-is — see [docs/build_log.md](docs/build_log.md) for why it's
-useful, honest evidence rather than something to fix by re-prompting until the number
-looks better. It's also the concrete case for **Phase 7** (fine-tuning): does it
-meaningfully raise this baseline? Phase 7 itself remains deferred for now. Full
+prompted-baseline rubric score, a model-size ablation, and generation-quality tuning
+on top of it. `qwen2.5:3b` scored **1.75/5 overall** zero-shot; a few-shot prompt only
+nudged it to 1.79/5. Swapping to `qwen2.5:7b` (same prompt, no fine-tuning) scored
+**3.19/5**, then lowering temperature to 0.4 and adding a bounded regenerate-on-
+degenerate-output retry (catches CJK-script corruption and near-verbatim repeats)
+raised it to **3.63/5** (3.74 tone / 3.81 task success / 3.36 code-switching) across
+all 42 dialogue scenarios, judged by Groq's `qwen/qwen3.8-27b`. `qwen2.5:7b` with
+these settings is now the default `OLLAMA_MODEL` and the real baseline **Phase 7**
+(fine-tuning) has to beat, not 1.75/5. Phase 7 itself remains deferred for now. Full
 history: [docs/build_log.md](docs/build_log.md).
 
 ## Setup
@@ -106,7 +116,7 @@ the dashboard — see `.env.example` for the template):
   test-mode API, needs the two keys below — implemented, untested pending them)
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` — required only when `RETRY_EXECUTOR=razorpay_test`
 - `MODEL_BACKEND` — `stub` (default) or `prompted` (Ollama-backed, needs `ollama pull
-  qwen2.5:3b` running locally — see `docs/build_log.md` Phase 3)
+  qwen2.5:7b` running locally — see `docs/build_log.md` Phase 3)
 - `PROMISE_EXTRACTOR` — `rule_based` (default, no LLM needed) or `llm` (Ollama-backed)
 - `GROQ_API_KEY` (or `LLM_JUDGE_API_KEY`) — needed only for
   `scripts/run_escalation_rubric_eval.py`; judge is Groq's `qwen/qwen3.8-27b`

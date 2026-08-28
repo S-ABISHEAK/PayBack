@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from src.escalation.agent import PromptedEscalationAgent, StubEscalationAgent, get_escalation_agent
+from src.escalation.agent import PromptedEscalationAgent, StubEscalationAgent, _is_degenerate, get_escalation_agent
 from tests.factories import make_case
 
 
@@ -43,3 +43,19 @@ def test_call_raises_actionable_error_when_ollama_unreachable():
     agent = PromptedEscalationAgent(base_url="http://localhost:1")  # nothing listens here
     with pytest.raises(RuntimeError, match="Could not reach Ollama"):
         agent._call([{"role": "user", "content": "hi"}])
+
+
+def test_is_degenerate_flags_cjk_script_corruption():
+    assert _is_degenerate("Sir aapka payment 你好世界 fail ho gaya", prior_agent_texts=[])
+
+
+def test_is_degenerate_flags_near_verbatim_repeat_of_prior_turn():
+    prior = "Sir, aapka payment 3 din pehle fail ho gaya tha, kya aap update kar sakte hain?"
+    near_dupe = "Sir, aapka payment 3 din pehle fail ho gaya tha, kya aap update kar sakte ho?"
+    assert _is_degenerate(near_dupe, prior_agent_texts=[prior])
+
+
+def test_is_degenerate_allows_normal_distinct_hinglish_reply():
+    prior = "Sir, aapka payment 3 din pehle fail ho gaya tha."
+    reply = "Koi baat nahi, aap jab bhi ready ho update kar dijiye, main yahin hoon."
+    assert not _is_degenerate(reply, prior_agent_texts=[prior])
