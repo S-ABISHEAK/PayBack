@@ -6,7 +6,13 @@ LLM judge. Writes evaluation/reports/escalation_rubric_report.json.
 Requires:
   - Ollama running locally with the configured model pulled (OLLAMA_MODEL,
     default qwen2.5:3b) — see src/escalation/agent.py.
-  - An LLM_JUDGE_API_KEY (Anthropic API key) in the environment.
+  - A GROQ_API_KEY (or LLM_JUDGE_API_KEY) in the environment. Judge is Groq's
+    qwen/qwen3.8-27b via their OpenAI-compatible endpoint — materially
+    stronger (27B vs. 3B) than the agent under test, per spec §9. Note: this
+    is listed as a Groq "preview" model (evaluation use, not production) —
+    fine here since this script's only job is evaluation, but it could be
+    swapped/discontinued upstream without notice; openai/gpt-oss-120b is the
+    documented fallback if qwen3.8-27b stops being available.
 
 Usage: python scripts/run_escalation_rubric_eval.py [--backend prompted]
 """
@@ -26,7 +32,8 @@ SAMPLES_DIR = REPO_ROOT / "data" / "samples"
 REPORTS_DIR = REPO_ROOT / "evaluation" / "reports"
 RUBRIC_PATH = REPO_ROOT / "evaluation" / "experiments" / "rubric_prompt.md"
 
-JUDGE_MODEL = "claude-sonnet-5"  # materially stronger than the 3B agent under test
+JUDGE_MODEL = "qwen/qwen3.8-27b"  # Groq-hosted, materially stronger (27B) than the 3B agent under test
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 def _load_rubric_system_prompt() -> str:
@@ -54,13 +61,15 @@ def _score_transcript(client, transcript: list[dict], scenario) -> dict:
         f"promised_date_offset_days={scenario.ground_truth.promised_date_offset_days}\n\n"
         f"Score this transcript per the system prompt's 3 criteria."
     )
-    response = client.messages.create(
+    response = client.chat.completions.create(
         model=JUDGE_MODEL,
         max_tokens=300,
-        system=_load_rubric_system_prompt(),
-        messages=[{"role": "user", "content": user_message}],
+        messages=[
+            {"role": "system", "content": _load_rubric_system_prompt()},
+            {"role": "user", "content": user_message},
+        ],
     )
-    text = response.content[0].text.strip()
+    text = response.choices[0].message.content.strip()
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
         raise ValueError(f"Judge did not return parseable JSON: {text!r}")
@@ -71,16 +80,16 @@ def main(backend: str = "prompted") -> None:
     if backend != "prompted":
         raise NotImplementedError("Only 'prompted' is available until Phase 7 adds a fine-tuned backend.")
 
-    api_key = os.environ.get("LLM_JUDGE_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("LLM_JUDGE_API_KEY")
     if not api_key:
         raise SystemExit(
-            "No LLM_JUDGE_API_KEY (or ANTHROPIC_API_KEY) set in the environment. "
+            "No GROQ_API_KEY (or LLM_JUDGE_API_KEY) set in the environment. "
             "The rubric judge must be a materially stronger model than the agent under test — "
             "set this before running the rubric eval."
         )
-    import anthropic
+    import openai
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = openai.OpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
 
     scenarios_path = SAMPLES_DIR / "dialogue_scenarios.jsonl"
     if not scenarios_path.exists():

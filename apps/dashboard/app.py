@@ -9,10 +9,13 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+load_dotenv(REPO_ROOT / ".env")
 
 from data.generators.failure_generator import load_jsonl
 from data.generators.split import load_ids

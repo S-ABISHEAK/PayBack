@@ -6,9 +6,10 @@ held-out run (242 cases, seed 42). **Practice this out loud before assuming it's
 fine** — the source doc is explicit that a simpler project pitched with total clarity
 beats a superior one pitched badly.
 
-Target: ~30 seconds per beat, 10 beats, 5 minutes. Adjust down if Phase 7
-(fine-tuning) isn't done by recording time — beats 5/9 are the ones to compress or
-cut, not beats 1/4/8/9(guardrail).
+Target: ~30 seconds per beat, 10 beats, 5 minutes. Ollama is live and the prompted
+agent's rubric score is measured (beat 5), so only Phase 7 (fine-tuning) is still a
+maybe by recording time — if it's not done, beat 5 just doesn't get a "vs. fine-tuned"
+comparison; nothing needs to be cut or apologized for.
 
 1. **The problem.** Failed recurring payments are recoverable revenue, not lost
    revenue — if you diagnose *why* it failed and respond appropriately instead of
@@ -27,12 +28,14 @@ cut, not beats 1/4/8/9(guardrail).
 4. **An automatic recovery case.** Show a case that recovered via retry alone —
    `retry_only_recovered_inr = ₹239,798` across the batch.
 
-5. **An unresolved case handed to the Hinglish agent.** *(If Phase 7/Ollama landed
-   before pitch day: a live conversation from the dashboard. If not: acknowledge
-   directly — "the escalation agent is built and wired, but live model inference
-   needs local infra I set up after this recording; here's the architecture and the
-   scripted-scenario test harness that proves the wiring.")* Escalation recovered
-   ₹161,359 of the batch's total — revenue retry alone could never have touched.
+5. **An unresolved case handed to the Hinglish agent.** Live conversation from the
+   dashboard's Case detail tab — real Ollama inference, not a mockup. Escalation
+   recovered ₹161,359 of the batch's total — revenue retry alone could never have
+   touched. Then be direct about the honest number: *"we measured this agent against
+   a locked rubric, judged by a model materially stronger than it — it scored 1.75
+   out of 5. That's a real limitation, not a demo we're hiding — it's the concrete
+   case for fine-tuning."* Don't oversell the conversation quality live; let the
+   measured score carry the honesty, not the demo.
 
 6. **A promise extracted from the conversation.** Show the extractor's output
    (has_promise / amount / date / confidence) on the case from beat 5, or on a
@@ -67,11 +70,11 @@ cut, not beats 1/4/8/9(guardrail).
 
 ## Things to have ready but not lead with
 
-- If asked about fine-tuning before it's done: state plainly that the system is
-  fully built and evaluated on a prompted agent, fine-tuning is scoped as an
-  isolated later experiment against a locked rubric, and "prompting was equally
-  good" is an explicitly valid outcome per the project's own methodology — not
-  something to be defensive about.
+- If asked about fine-tuning before it's done: state plainly that the prompted
+  baseline is measured (1.75/5), fine-tuning is scoped as an isolated later
+  experiment that has to beat that number on the same locked rubric, and "prompting
+  was equally good" would still be an explicitly valid outcome per the project's own
+  methodology — not something to be defensive about either way.
 - The state-idempotency gap (`docs/failure_story.md` third story) — good material
   if asked "how would this move to production," bad material to volunteer unprompted
   since it reads as unfinished if introduced without the context of *why* it wasn't

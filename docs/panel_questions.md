@@ -49,15 +49,22 @@ Three places, all advisory, never authorizing:
 
 ## Why fine-tune instead of prompt engineering — and how did you prove it was worth it?
 
-Not yet answerable with a result — **and that's stated honestly, not glossed over.**
 The system is deliberately built and fully evaluated on a *prompted* agent first
-(Phase 3), with fine-tuning scoped as an isolated, later experiment (Phase 7) that
-must beat the prompted baseline on a locked 3-criterion rubric (tone naturalness,
-task success, code-switch quality — `evaluation/experiments/rubric_prompt.md`,
-written before any comparison runs) to be kept at all. If it doesn't win, the
+(Phase 3), against a locked 3-criterion rubric (tone naturalness, task success,
+code-switch quality — `evaluation/experiments/rubric_prompt.md`, written before any
+comparison runs) — a fine-tuned model must beat this baseline on that same rubric to
+be kept at all. **The prompted baseline is now measured, and it's weak**: `qwen2.5:3b`,
+prompted zero-shot, scores **1.75/5 overall** (1.83 tone / 1.93 task success / 1.48
+code-switching) across all 42 dialogue scenarios, judged by a materially stronger
+model (Groq's `qwen/qwen3.8-27b`). Per-scenario notes show a consistent pattern —
+grammatically incoherent Hindi, hallucinated/repeated phrasing, occasional nonsense —
+not noise. This result is reported as-is, not re-prompted until it looked better,
+because that number *is* the case for fine-tuning: a clear, quantified gap a LoRA
+adapter has a real chance of closing. Fine-tuning itself (Phase 7) is scoped as an
+isolated, later experiment; if it doesn't measurably beat 1.75/5 on this rubric, the
 prompted version ships and that's reported as the finding — per the source doc's own
 guidance, "we tested it and prompting was equally good" is a legitimate engineering
-conclusion, not a failure to hide. Phase 7 is currently blocked on local Ollama setup.
+conclusion. Phase 7 is currently deferred by the builder's own choice, not blocked.
 
 ## How did you generate the synthetic data?
 

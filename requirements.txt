@@ -18,9 +18,9 @@ streamlit
 # Razorpay integration
 razorpay
 
-# Local LLM (Ollama HTTP API) + LLM-judge client
+# Local LLM (Ollama HTTP API) + LLM-judge client (Groq, OpenAI-compatible endpoint)
 requests
-anthropic
+openai
 
 # LLM / fine-tuning (installed in Phase 3/7 — heavy, keep out of the base dev env if not yet needed)
 # transformers

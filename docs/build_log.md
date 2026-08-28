@@ -32,7 +32,7 @@ tested. A single case replays end-to-end via `python scripts/replay_case.py
 this phase were superseded in Phase 4 by a reproducibility bug fix — the original
 64.25%/+41.35% figures were never actually reproducible; don't quote them.)
 
-## Phase 3 — Hinglish escalation agent — live conversation verified; rubric score still pending
+## Phase 3 — Hinglish escalation agent — done: live conversation verified, prompted-baseline rubric score recorded
 
 Hinglish dialogue scenario dataset (42 scenarios, 7 categories), locked rubric prompt
 (`evaluation/experiments/rubric_prompt.md`), and `PromptedEscalationAgent`
@@ -56,10 +56,36 @@ dialogue not being perfect is exactly the hypothesis fine-tuning is meant to tes
 69/69 tests still passing after the prompt change (none of them exercise a live model
 call — they cover wiring/error-handling only, by design).
 
-Still open for full Phase 3 completion (not blocking anything else): an
-`LLM_JUDGE_API_KEY` (or `ANTHROPIC_API_KEY`) in the environment, needed to actually
-run `scripts/run_escalation_rubric_eval.py` and get a real prompted-baseline rubric
-score — the judge must be materially stronger than the 3B agent under test.
+**Update (2026-08-27): full 42-scenario rubric run completed for real**, judged by
+Groq's `qwen/qwen3.8-27b` (27B — materially stronger than the 3B agent, per spec §9).
+`python scripts/run_escalation_rubric_eval.py` →
+`evaluation/reports/escalation_rubric_report.json`.
+
+**The prompted `qwen2.5:3b` agent scored poorly — reported honestly, not tuned away:**
+
+| Criterion | Mean (1-5) |
+|---|---|
+| Tone naturalness | 1.83 |
+| Task success | 1.93 |
+| Code-switch quality | 1.48 |
+| **Overall** | **1.75** |
+
+The judge's per-scenario notes show a consistent pattern, not noise: grammatically
+incoherent Hindi, repeated/hallucinated phrasing, occasional nonsense or
+inappropriate words, and a recurring failure to reliably confirm the customer's
+exact stated amount/date. Notably, the *exact* date-hallucination bug fixed in the
+single manual test earlier this phase (3 days → "15 days") reappeared in a different
+scenario at scale (`dlg_promise_to_pay_001`) — the prompt fix reduced but did not
+eliminate the underlying model limitation. This is a real, useful data point, not a
+regression: it's honest evidence that a 3B general-purpose model doing zero-shot
+Hinglish collections dialogue has a real ceiling, which directly motivates Phase 7
+(does fine-tuning meaningfully raise this baseline?) rather than being an
+embarrassment to paper over. No further prompt iteration was done specifically to
+push this number up — that would edge toward exactly the score-gaming this project's
+own evaluation philosophy argues against.
+
+Phase 3 is now fully done per its own "Done" criterion (prompted-baseline rubric
+score recorded) — regardless of the score's value, not despite it.
 
 Also open, non-blocking: Razorpay test-mode keys (real retry executor is implemented
 but untested pending them). User acknowledged both open items and asked to proceed
