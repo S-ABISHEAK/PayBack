@@ -2,7 +2,13 @@ import os
 
 import pytest
 
-from src.escalation.agent import PromptedEscalationAgent, StubEscalationAgent, _is_degenerate, get_escalation_agent
+from src.escalation.agent import (
+    GroqEscalationAgent,
+    PromptedEscalationAgent,
+    StubEscalationAgent,
+    _is_degenerate,
+    get_escalation_agent,
+)
 from tests.factories import make_case
 
 
@@ -16,6 +22,20 @@ def test_get_escalation_agent_prompted_returns_prompted_instance(monkeypatch):
     monkeypatch.setenv("MODEL_BACKEND", "prompted")
     agent = get_escalation_agent(seed=1)
     assert isinstance(agent, PromptedEscalationAgent)
+
+
+def test_get_escalation_agent_groq_prompted_returns_groq_instance(monkeypatch):
+    monkeypatch.setenv("MODEL_BACKEND", "groq_prompted")
+    monkeypatch.setenv("GROQ_API_KEY", "test-key-not-real")
+    agent = get_escalation_agent(seed=1)
+    assert isinstance(agent, GroqEscalationAgent)
+
+
+def test_groq_escalation_agent_requires_api_key(monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_JUDGE_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match="GROQ_API_KEY"):
+        GroqEscalationAgent()
 
 
 def test_get_escalation_agent_unknown_backend_raises(monkeypatch):

@@ -131,45 +131,23 @@ def _is_degenerate(text: str, prior_agent_texts: list[str]) -> bool:
     return any(SequenceMatcher(None, text, prior).ratio() > _NEAR_DUPLICATE_RATIO for prior in prior_agent_texts)
 
 
-class PromptedEscalationAgent(EscalationAgent):
-    """Prompted (not fine-tuned) Hinglish agent, backed by a local Ollama model.
-    Since there's no real customer to converse with in this synthetic system,
-    escalate() drives the customer side from a scripted dialogue scenario
-    (data/generators/hinglish_dialogue_generator.py) selected deterministically
-    from observable case signals (case_id, attempt_number) — never from
-    ground_truth, matching every other model component in this system. The
-    same scenario mechanism, run over the full scenario set rather than one
-    case, is what evaluation/experiments/run_escalation_rubric_eval.py scores
-    against the locked rubric.
+class _ConversationalEscalationAgent(EscalationAgent):
+    """Shared scenario-driving logic for any prompted (not fine-tuned) Hinglish
+    agent — subclasses only need to implement `_call`, which sends
+    `SYSTEM_PROMPT` + the running message list to whatever backend they wrap
+    and returns the raw reply text. Since there's no real customer to converse
+    with in this synthetic system, escalate() drives the customer side from a
+    scripted dialogue scenario (data/generators/hinglish_dialogue_generator.py)
+    selected deterministically from observable case signals (case_id,
+    attempt_number) — never from ground_truth, matching every other model
+    component in this system. The same scenario mechanism, run over the full
+    scenario set rather than one case, is what
+    evaluation/experiments/run_escalation_rubric_eval.py scores against the
+    locked rubric.
     """
 
-    def __init__(
-        self,
-        model: str | None = None,
-        base_url: str | None = None,
-    ):
-        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
-        self._base_url = base_url or os.environ.get("OLLAMA_URL", "http://localhost:11434")
-
     def _call(self, messages: list[dict], temperature: float = DEFAULT_TEMPERATURE) -> str:
-        try:
-            resp = requests.post(
-                f"{self._base_url}/api/chat",
-                json={
-                    "model": self._model,
-                    "messages": messages,
-                    "stream": False,
-                    "options": {"temperature": temperature},
-                },
-                timeout=180,
-            )
-            resp.raise_for_status()
-        except requests.exceptions.ConnectionError as e:
-            raise RuntimeError(
-                f"Could not reach Ollama at {self._base_url}. Is it running? "
-                f"Try `ollama serve` and `ollama pull {self._model}`."
-            ) from e
-        return resp.json()["message"]["content"].strip()
+        raise NotImplementedError
 
     def _generate_reply(self, messages: list[dict], prior_agent_texts: list[str]) -> str:
         """One bounded regenerate-on-degenerate-output retry — same
@@ -226,12 +204,97 @@ class PromptedEscalationAgent(EscalationAgent):
         )
 
 
+class PromptedEscalationAgent(_ConversationalEscalationAgent):
+    """Backed by a local Ollama model (default qwen2.5:7b)."""
+
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+    ):
+        self._model = model or os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
+        self._base_url = base_url or os.environ.get("OLLAMA_URL", "http://localhost:11434")
+
+    def _call(self, messages: list[dict], temperature: float = DEFAULT_TEMPERATURE) -> str:
+        try:
+            resp = requests.post(
+                f"{self._base_url}/api/chat",
+                json={
+                    "model": self._model,
+                    "messages": messages,
+                    "stream": False,
+                    "options": {"temperature": temperature},
+                },
+                timeout=180,
+            )
+            resp.raise_for_status()
+        except requests.exceptions.ConnectionError as e:
+            raise RuntimeError(
+                f"Could not reach Ollama at {self._base_url}. Is it running? "
+                f"Try `ollama serve` and `ollama pull {self._model}`."
+            ) from e
+        return resp.json()["message"]["content"].strip()
+
+
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+# 512 is a generous cap for a 2-3 sentence Hinglish reply, well inside every
+# candidate Groq model's max_completion_tokens (16384 for qwen3.8-27b, 65536
+# for gpt-oss-120b/20b — verified live via GET /v1/models). Context window is
+# 131k tokens on all of them; a full multi-turn scenario transcript here is
+# under 2k tokens, so context length is never the limiting factor.
+GROQ_AGENT_MAX_TOKENS = 512
+
+
+class GroqEscalationAgent(_ConversationalEscalationAgent):
+    """Prompted Hinglish agent backed by a much larger model hosted on Groq
+    (default qwen/qwen3.8-27b, 27B) instead of a local Ollama model — tests
+    whether raw scale alone closes the gap seen at 3B/7B, with no fine-tuning
+    and no local compute. NOTE: evaluation/experiments/run_escalation_rubric_eval.py
+    must use a judge materially stronger than whichever Groq model this wraps
+    (e.g. openai/gpt-oss-120b when the agent is qwen/qwen3.8-27b) — it is not
+    safe to reuse the same model as both agent and judge.
+    """
+
+    def __init__(self, model: str | None = None):
+        self._model = model or os.environ.get("GROQ_AGENT_MODEL", "qwen/qwen3.8-27b")
+        api_key = os.environ.get("GROQ_API_KEY") or os.environ.get("LLM_JUDGE_API_KEY")
+        if not api_key:
+            raise SystemExit(
+                "No GROQ_API_KEY (or LLM_JUDGE_API_KEY) set — required for MODEL_BACKEND=groq_prompted."
+            )
+        import openai
+
+        self._client = openai.OpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
+
+    def _call(self, messages: list[dict], temperature: float = DEFAULT_TEMPERATURE) -> str:
+        content = self._call_once(messages, temperature)
+        if not content:
+            # Empty completion is a real, observed transient Groq failure mode
+            # (hit once during development) — one bounded retry before giving up.
+            content = self._call_once(messages, temperature)
+        if not content:
+            raise RuntimeError(f"Groq model {self._model!r} returned an empty completion twice in a row.")
+        return content.strip()
+
+    def _call_once(self, messages: list[dict], temperature: float) -> str | None:
+        response = self._client.chat.completions.create(
+            model=self._model,
+            temperature=temperature,
+            max_tokens=GROQ_AGENT_MAX_TOKENS,
+            messages=messages,
+        )
+        return response.choices[0].message.content
+
+
 def get_escalation_agent(seed: int = 42) -> EscalationAgent:
     backend = os.environ.get("MODEL_BACKEND", "stub")
     if backend == "stub":
         return StubEscalationAgent(seed=seed)
     if backend == "prompted":
         return PromptedEscalationAgent()
+    if backend == "groq_prompted":
+        return GroqEscalationAgent()
     raise NotImplementedError(
-        f"MODEL_BACKEND={backend!r} is not available yet (only 'stub' and 'prompted' exist so far)."
+        f"MODEL_BACKEND={backend!r} is not available yet "
+        "(only 'stub', 'prompted', and 'groq_prompted' exist so far)."
     )
