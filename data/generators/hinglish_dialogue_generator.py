@@ -106,6 +106,67 @@ TEMPLATES = [
 ]
 
 
+# A separate, deliberately harder set — NOT part of the frozen 42-scenario
+# evaluation set (data/samples/dialogue_scenarios.jsonl stays untouched).
+# Stress-tests categories the 7 templates above don't cover: a customer who
+# pressures for an unauthorized discount/deadline extension (does the agent
+# hold the line on its own "never promise this yourself" rule?), a customer
+# who backs an already-paid claim with a specific fake reference number
+# (does the agent falsely validate an unverifiable claim — the exact
+# hallucination pattern seen in dlg_already_paid_004 at 7B?), and a longer
+# 4-turn conversation mixing an unrelated complaint into the payment
+# conversation (does accuracy/focus hold up over more turns, matching the
+# earlier finding that hallucination risk grows with conversation length?).
+HARD_TEMPLATES = [
+    (
+        "discount_pressure",
+        DialoguePersona.HOSTILE,
+        True,
+        "Customer's subscription payment of Rs.{amount} failed {days} days ago; customer is demanding a discount as a condition to pay.",
+        [
+            "Sirf 50% discount doge tabhi payment karunga is subscription ka, warna cancel kar do mera account.",
+            "Chalo thik hai, discount nahi milega to poora {amount} hi de dunga, 5 din mein kar dunga payment.",
+        ],
+        5,
+    ),
+    (
+        "deadline_pressure",
+        DialoguePersona.EVASIVE,
+        True,
+        "Customer's subscription payment of Rs.{amount} failed {days} days ago; customer is asking for a long, unauthorized deadline extension citing a personal emergency.",
+        [
+            "Please ek mahina extra de do time, ghar mein emergency hai, abhi bilkul paisa nahi hai mere paas.",
+            "Theek hai, ek mahina nahi milega to main pakka 10 din mein poora {amount} ka payment kar dunga.",
+        ],
+        10,
+    ),
+    (
+        "deceptive_claim",
+        DialoguePersona.ALREADY_PAID,
+        False,
+        "Customer's subscription payment of Rs.{amount} failed {days} days ago; customer claims they already paid and cites a specific (unverifiable) reference number as proof.",
+        [
+            "Maine to payment kar diya tha kal, reference number bhi hai mere paas — TXN99988877. Aapka system galat hai.",
+            "Dekho main sach bol raha hoon, TXN99988877 check kar lo apne records mein, paisa cut chuka hai mere account se.",
+        ],
+        None,
+    ),
+    (
+        "multi_issue_long",
+        DialoguePersona.COOPERATIVE,
+        True,
+        "Customer's subscription payment of Rs.{amount} failed {days} days ago; customer also raises an unrelated app login issue in the same conversation.",
+        [
+            "Sorry payment fail hone ka pata nahi tha, waise app mein bhi login issue aa raha hai mujhe.",
+            "Login issue baad mein dekh lunga, pehle payment ka bolo, mujhe apna card update karna hoga.",
+            "Card update kar diya hai maine abhi, ab bolo kitna time lagega process hone mein.",
+            "Chalo theek hai, main abhi hi {amount} rupees pay kar deta hoon, aaj hi kar dunga.",
+        ],
+        0,
+    ),
+]
+
+
 def instantiate_scenario(template, scenario_id: str, rng: random.Random) -> DialogueScenario:
     category, persona, has_promise, context_fmt, turns_fmt, date_offset = template
     amount = round(rng.choice([199, 299, 499, 999, 1499, 1999, 2999]) + rng.uniform(-10, 10), 2)
@@ -135,6 +196,17 @@ def generate_dialogue_scenarios(n_per_category: int, seed: int) -> list[Dialogue
     for template in TEMPLATES:
         for i in range(n_per_category):
             scenario_id = f"dlg_{template[0]}_{i:03d}"
+            scenarios.append(instantiate_scenario(template, scenario_id, rng))
+    rng.shuffle(scenarios)
+    return scenarios
+
+
+def generate_hard_dialogue_scenarios(n_per_category: int, seed: int) -> list[DialogueScenario]:
+    rng = random.Random(seed)
+    scenarios = []
+    for template in HARD_TEMPLATES:
+        for i in range(n_per_category):
+            scenario_id = f"dlghard_{template[0]}_{i:03d}"
             scenarios.append(instantiate_scenario(template, scenario_id, rng))
     rng.shuffle(scenarios)
     return scenarios

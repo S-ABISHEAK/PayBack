@@ -103,7 +103,7 @@ def _score_transcript(client, judge_model: str, transcript: list[dict], scenario
     return json.loads(match.group(0))
 
 
-def main(backend: str = "prompted") -> None:
+def main(backend: str = "prompted", scenarios_path=None) -> None:
     if backend not in JUDGE_MODEL_BY_BACKEND:
         raise NotImplementedError(
             f"backend={backend!r} not supported — choose one of {sorted(JUDGE_MODEL_BY_BACKEND)}."
@@ -121,9 +121,9 @@ def main(backend: str = "prompted") -> None:
 
     client = openai.OpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
 
-    scenarios_path = SAMPLES_DIR / "dialogue_scenarios.jsonl"
+    scenarios_path = scenarios_path or (SAMPLES_DIR / "dialogue_scenarios.jsonl")
     if not scenarios_path.exists():
-        raise SystemExit("No dialogue scenarios found. Run scripts/generate_dialogue_scenarios.py first.")
+        raise SystemExit(f"No dialogue scenarios found at {scenarios_path}.")
     scenarios = load_jsonl(scenarios_path)
 
     agent = GroqEscalationAgent() if backend == "groq_prompted" else PromptedEscalationAgent()
@@ -153,12 +153,18 @@ def main(backend: str = "prompted") -> None:
         "backend": backend,
         "model": agent._model,
         "judge_model": judge_model,
+        "scenarios_path": str(scenarios_path),
         "n_scenarios": n,
         "mean_scores": means,
         "per_scenario": per_scenario,
     }
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    report_name = "escalation_rubric_report.json" if backend == "prompted" else f"escalation_rubric_report.{backend}.json"
+    scenario_stem = scenarios_path.stem  # e.g. "dialogue_scenarios" or "dialogue_scenarios_hard"
+    if scenario_stem == "dialogue_scenarios":
+        report_name = "escalation_rubric_report.json" if backend == "prompted" else f"escalation_rubric_report.{backend}.json"
+    else:
+        suffix = scenario_stem.removeprefix("dialogue_scenarios_")
+        report_name = f"escalation_rubric_report.{backend}.{suffix}.json"
     with open(REPORTS_DIR / report_name, "w") as f:
         json.dump(report, f, indent=2, ensure_ascii=False)
 
@@ -169,5 +175,8 @@ def main(backend: str = "prompted") -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--backend", default="prompted", choices=sorted(JUDGE_MODEL_BY_BACKEND))
+    parser.add_argument("--scenarios", default=None, help="Path to a scenarios .jsonl file (default: the frozen dialogue_scenarios.jsonl)")
     args = parser.parse_args()
-    main(backend=args.backend)
+    from pathlib import Path
+
+    main(backend=args.backend, scenarios_path=Path(args.scenarios) if args.scenarios else None)
