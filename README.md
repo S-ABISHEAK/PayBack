@@ -27,7 +27,7 @@ Panel Q&A: [docs/panel_questions.md](docs/panel_questions.md). Failure story:
 | Promise extraction P/R/F1 | 100%¹ |
 | Prompted Hinglish agent rubric score, qwen2.5:3b (42 scenarios) | 1.75/5² |
 | Prompted Hinglish agent rubric score, qwen2.5:7b, local tuned (42 scenarios) | 3.63/5² |
-| Prompted Hinglish agent rubric score, qwen3.8-27b via Groq (42 scenarios) | **4.63/5²** |
+| Prompted Hinglish agent rubric score, qwen3.8-27b via Groq (42 scenarios, n=3 runs) | **4.63 ± 0.06/5²** |
 
 ¹ Self-consistency check on the rule-based extractor's own hand-authored vocabulary —
 see [docs/build_log.md](docs/build_log.md#phase-4--promise-tracking--done), not
@@ -41,8 +41,12 @@ output retry (catches CJK-script corruption and near-verbatim turn repeats — s
 validate-then-repair pattern as the promise extractor) raised it to 3.63. Finally,
 routing the same agent through a much larger model hosted on Groq (`qwen/qwen3.8-27b`,
 `MODEL_BACKEND=groq_prompted`, judged by an even bigger `openai/gpt-oss-120b` to keep
-the judge-stronger-than-agent invariant) reached **4.63/5** — near the rubric's
-ceiling. `qwen2.5:7b` (local) stays the default `OLLAMA_MODEL`; the Groq backend is
+the judge-stronger-than-agent invariant) reached **4.63 ± 0.06/5 (mean of 3 runs)** —
+near the rubric's ceiling, and confirmed stable rather than a lucky single draw. A
+separate adversarial check confirmed the judge itself discriminates real quality
+(2.17-point mean score drop on deliberately corrupted transcripts, each corruption
+hitting the specific criterion it violated). `qwen2.5:7b` (local) stays the default
+`OLLAMA_MODEL`; the Groq backend is
 an explicit trade-off (customer conversation data leaves the local machine for a
 third-party API) documented, not silently defaulted to. See
 [docs/build_log.md](docs/build_log.md) Phase 3.
