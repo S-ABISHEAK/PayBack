@@ -80,7 +80,7 @@ Payment Event Stream / Synthetic Batch
                   ↓
               Audit Logger ─────────────────────  src/audit/  (append-only, no update/delete)
                   ↓
-        Evaluation + Dashboard ──────────────────  evaluation/, apps/dashboard/
+        Evaluation + Dashboard ──────────────────  evaluation/, frontend/
 ```
 
 **The one rule that matters most:** the diagnosis classifier and the escalation
@@ -122,7 +122,8 @@ cp .env.example .env   # then fill in the keys you have — auto-loaded by every
 Environment variables (`.env` at the repo root is auto-loaded by every script and by
 the dashboard — see `.env.example` for the template):
 - `RETRY_EXECUTOR` — `stub` (default, deterministic offline) or `razorpay_test` (real
-  test-mode API, needs the two keys below — implemented, untested pending them)
+  test-mode API, needs the two keys below — verified end-to-end against Razorpay's
+  real test-mode API, see `docs/build_log.md` Phase 0/2)
 - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` — required only when `RETRY_EXECUTOR=razorpay_test`
 - `MODEL_BACKEND` — `stub` (default), `prompted` (Ollama-backed, needs `ollama pull
   qwen2.5:7b` running locally), or `groq_prompted` (routes the agent itself through
@@ -136,7 +137,7 @@ the dashboard — see `.env.example` for the template):
 ## Repository shape
 
 ```
-apps/dashboard/          Streamlit dashboard
+frontend/                FastAPI server + vanilla HTML/CSS/JS dashboard (server.py, loaders.py, static/)
 src/                      detection, diagnosis, policy, retry, escalation, promise, guardrails, audit, orchestration
 data/                     generators, schemas, samples (frozen dataset — tracked, not gitignored)
 models/                   diagnosis (tracked), hinglish (Phase 7, not yet built)
@@ -160,8 +161,9 @@ python scripts/generate_dialogue_scenarios.py --seed 42
 python scripts/evaluate_promise_extraction.py  # rule_based backend, no Ollama needed
 python scripts/run_escalation_rubric_eval.py   # needs Ollama + GROQ_API_KEY
 python scripts/run_escalation_rubric_eval.py --backend groq_prompted  # needs GROQ_API_KEY only
-streamlit run apps/dashboard/app.py
-pytest tests/                                   # 74/74 passing
+python scripts/verify_razorpay_integration.py  # needs RAZORPAY_KEY_ID/SECRET, hits the real test-mode API
+python -m uvicorn frontend.server:app --reload  # dashboard at http://127.0.0.1:8000
+pytest tests/                                   # 76/76 passing
 ```
 
 Every reported number above reproduces exactly from a clean state — verified by

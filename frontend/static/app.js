@@ -1,0 +1,540 @@
+"use strict";
+
+let overviewData = null;
+
+// ----------------------------------------------------------------------------
+// helpers
+// ----------------------------------------------------------------------------
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+const inr = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 0 });
+const pct = (x) => (x * 100).toFixed(1) + "%";
+const signedPct = (x) => (x >= 0 ? "+" : "") + (x * 100).toFixed(1) + "%";
+const boolChip = (v) => {
+  if (v === null || v === undefined) return '<span class="chip muted">&mdash;</span>';
+  return v ? '<span class="chip yes">yes</span>' : '<span class="chip no">no</span>';
+};
+
+// ----------------------------------------------------------------------------
+// tabs
+// ----------------------------------------------------------------------------
+function setupTabs() {
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("active", b === btn));
+      document.querySelectorAll(".tab-panel").forEach((p) =>
+        p.classList.toggle("active", p.id === "tab-" + tab)
+      );
+    });
+  });
+}
+
+// ----------------------------------------------------------------------------
+// overview
+// ----------------------------------------------------------------------------
+async function loadOverview() {
+  let data;
+  try {
+    const resp = await fetch("/api/overview");
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      showGlobalError(body.detail || `Failed to load overview (HTTP ${resp.status})`);
+      return;
+    }
+    data = await resp.json();
+  } catch (e) {
+    showGlobalError("Could not reach the dashboard API. Is the server running?");
+    return;
+  }
+  overviewData = data;
+  $("#global-error").hidden = true;
+
+  renderBackendLine(data.current_model_backend);
+  if (["prompted", "groq_prompted"].includes(data.current_model_backend)) {
+    $("#escalate-backend").value = data.current_model_backend;
+  }
+  renderMetricCards(data);
+  renderComparison(data.comparison);
+  renderRubricChart(data.rubric_progression);
+  renderRubricComparison(data.rubric_comparison);
+  renderJudgeDiscrimination(data.judge_discrimination);
+  renderSlices(data.slices);
+  renderPromise(data.promise_extraction);
+  renderRazorpay(data.razorpay_integration);
+  renderPipeline();
+  populateCaseSelect(data.cases);
+}
+
+function showGlobalError(msg) {
+  const box = $("#global-error");
+  box.textContent = msg;
+  box.hidden = false;
+}
+
+function renderBackendLine(backend) {
+  const labels = {
+    stub: "stub (deterministic, offline)",
+    prompted: "prompted — local Ollama (qwen2.5:7b)",
+    groq_prompted: "groq_prompted — Groq cloud (qwen/qwen3.8-27b)",
+  };
+  $("#backend-line").innerHTML =
+    "Active escalation backend (<code>MODEL_BACKEND</code>): <strong>" +
+    (labels[backend] || backend) +
+    "</strong>";
+}
+
+function renderMetricCards(data) {
+  const t = data.totals;
+  const cards = [
+    ["Total cases", t.total_cases.toLocaleString("en-IN")],
+    ["Held-out cases", t.holdout_cases.toLocaleString("en-IN")],
+    ["Total ₹ (all cases)", inr(t.total_amount_inr)],
+    [
+      "System results loaded",
+      data.system_results_loaded ? data.system_results_count + " cases" : "none yet",
+    ],
+  ];
+  const row = $("#metric-cards");
+  row.innerHTML = "";
+  cards.forEach(([label, value]) => {
+    const c = el("div", "metric-card");
+    c.appendChild(el("div", "label", label));
+    c.appendChild(el("div", "value", value));
+    row.appendChild(c);
+  });
+}
+
+function renderComparison(c) {
+  const box = $("#comparison");
+  if (!c) {
+    box.className = "info-box";
+    box.textContent =
+      "Run `python scripts/run_baseline_eval.py` and `python scripts/run_system_eval.py` to populate this.";
+    return;
+  }
+  box.className = "callout";
+  const kv = (k, v, cls) =>
+    `<div class="kv"><div class="k">${k}</div><div class="v ${cls || ""}">${v}</div></div>`;
+  box.innerHTML =
+    '<div class="kv-grid">' +
+    kv("₹ at risk", inr(c.rupees_at_risk)) +
+    kv("Baseline recovery", pct(c.baseline_recovery_rate)) +
+    kv("System recovery", pct(c.system_recovery_rate), "pos") +
+    kv("Uplift", signedPct(c.uplift), "pos") +
+    kv("Retry-only ₹", inr(c.retry_only_recovered_inr)) +
+    kv("Escalation-assisted ₹", inr(c.escalation_assisted_recovered_inr)) +
+    kv("Escalation rate", pct(c.escalation_rate)) +
+    kv("Guardrail violations", c.guardrail_violations) +
+    "</div>" +
+    '<p class="note" style="margin-bottom:0">Same held-out population and the same multi-attempt budget ' +
+    "for both runs; the baseline never escalates. Attempt-outcome probabilities decay with repeated tries, " +
+    "applied identically to both, so the comparison isolates diagnosis-aware routing + the escalation channel.</p>";
+}
+
+function renderRubricChart(rows) {
+  const chart = $("#rubric-chart");
+  chart.innerHTML = "";
+  if (!rows || !rows.length) {
+    chart.innerHTML = '<p class="note">No rubric reports on disk yet.</p>';
+    return;
+  }
+  rows.forEach((r) => {
+    const width = (r.overall / 5.0) * 100;
+    const row = el("div", "bar-row");
+    row.appendChild(el("span", "bar-label", r.label));
+    const track = el("div", "bar-track");
+    const fill = el("div", "bar-fill" + (r.current ? " current" : ""));
+    fill.style.width = width.toFixed(1) + "%";
+    track.appendChild(fill);
+    row.appendChild(track);
+    row.appendChild(el("span", "bar-value", r.overall.toFixed(2)));
+    chart.appendChild(row);
+  });
+}
+
+function renderRubricComparison(rc) {
+  const box = $("#rubric-comparison");
+  box.innerHTML = "";
+  if (!rc || (!rc.local && !rc.groq)) return;
+  const crits = [
+    ["tone_naturalness", "Tone naturalness"],
+    ["task_success", "Task success"],
+    ["code_switch_quality", "Code-switch quality"],
+    ["overall", "Overall"],
+  ];
+  const scroll = el("div", "table-scroll");
+  const table = el("table");
+  table.innerHTML =
+    "<thead><tr><th>Criterion</th><th>Local (qwen2.5:7b)</th><th>Groq (qwen3.8-27b)</th></tr></thead>";
+  const tbody = el("tbody");
+  crits.forEach(([key, label]) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", null, label));
+    tr.appendChild(el("td", null, rc.local ? rc.local[key].toFixed(2) : "—"));
+    tr.appendChild(el("td", null, rc.groq ? rc.groq[key].toFixed(2) : "—"));
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  box.appendChild(scroll);
+}
+
+function renderJudgeDiscrimination(jd) {
+  const p = $("#judge-discrimination");
+  if (!jd) {
+    p.textContent = "";
+    return;
+  }
+  p.innerHTML =
+    `<strong>Judge validity check:</strong> corrupting one turn in ${jd.n_corruption_cases} already-scored ` +
+    `transcripts dropped the judge's overall score by a mean of ${jd.mean_overall_score_drop.toFixed(2)}/5 ` +
+    `(judge: <code>${jd.judge_model}</code>) &mdash; each corruption hit the criterion it violated hardest, ` +
+    "so the headline number reflects quality, not judge leniency.";
+}
+
+function renderSlices(slices) {
+  const box = $("#slices");
+  box.innerHTML = "";
+  if (!slices) {
+    box.className = "info-box";
+    box.textContent = "Run `python scripts/run_slice_analysis.py` to populate this (needs both eval runs first).";
+    return;
+  }
+  box.className = "";
+  const labels = {
+    failure_category: "By failure category (ground truth)",
+    amount_bucket: "By amount bucket",
+    attempt_count: "By attempt count at detection",
+  };
+  Object.entries(labels).forEach(([dim, label]) => {
+    if (!slices[dim]) return;
+    const group = el("div", "slice-group");
+    group.appendChild(el("h4", null, label));
+    const scroll = el("div", "table-scroll");
+    const table = el("table");
+    table.innerHTML =
+      "<thead><tr><th>Slice</th><th>n</th><th>Baseline</th><th>System</th><th>Uplift</th></tr></thead>";
+    const tbody = el("tbody");
+    Object.entries(slices[dim]).forEach(([slice, m]) => {
+      const tr = el("tr");
+      tr.innerHTML =
+        `<td>${slice}</td><td>${m.n_cases}</td>` +
+        `<td>${pct(m.baseline_recovery_rate)}</td>` +
+        `<td>${pct(m.system_recovery_rate)}</td>` +
+        `<td class="${m.uplift >= 0 ? "pos" : "neg"}">${signedPct(m.uplift)}</td>`;
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    group.appendChild(scroll);
+    box.appendChild(group);
+  });
+}
+
+function renderPromise(p) {
+  const box = $("#promise");
+  if (!p) {
+    box.className = "info-box";
+    box.textContent = "Run `python scripts/evaluate_promise_extraction.py` to populate this.";
+    return;
+  }
+  const warn = p.backend === "rule_based";
+  box.className = "callout" + (warn ? " warn" : "");
+  let html =
+    '<div class="kv-grid">' +
+    `<div class="kv"><div class="k">Precision</div><div class="v">${pct(p.precision)}</div></div>` +
+    `<div class="kv"><div class="k">Recall</div><div class="v">${pct(p.recall)}</div></div>` +
+    `<div class="kv"><div class="k">F1</div><div class="v">${pct(p.f1)}</div></div>` +
+    `<div class="kv"><div class="k">Backend</div><div class="v">${p.backend}</div></div>` +
+    "</div>";
+  if (warn) {
+    html +=
+      '<p class="note" style="margin-bottom:0">⚠️ Evaluated on the same hand-authored Hinglish vocabulary ' +
+      "the rule-based extractor's keyword rules were built from &mdash; an internal-consistency check, not " +
+      "evidence of generalization. The real robustness test is the LLM-based extractor against agent-generated text.</p>";
+  }
+  box.innerHTML = html;
+}
+
+function renderRazorpay(rz) {
+  const box = $("#razorpay");
+  box.innerHTML = "";
+  if (!rz) {
+    box.className = "info-box";
+    box.textContent =
+      "Run `python scripts/verify_razorpay_integration.py` (needs RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).";
+    return;
+  }
+  box.className = "";
+  box.appendChild(
+    (() => {
+      const p = el("p", "note");
+      p.innerHTML =
+        `<strong>${rz.n_real_razorpay_orders_created} real Razorpay test-mode orders</strong> created across ` +
+        `${rz.n_cases} held-out cases, each gated by the deterministic policy engine (a policy-decided ` +
+        "escalate-only case correctly creates zero orders). Frozen headline numbers still use the " +
+        "byte-reproducible stub executor.";
+      return p;
+    })()
+  );
+  const scroll = el("div", "table-scroll");
+  const table = el("table");
+  table.innerHTML =
+    "<thead><tr><th>Case</th><th>&#8377;</th><th>Recovered</th><th>Channel</th><th>Attempts</th><th>Razorpay order IDs</th></tr></thead>";
+  const tbody = el("tbody");
+  rz.cases.forEach((c) => {
+    const tr = el("tr");
+    tr.innerHTML =
+      `<td>${c.case_id}</td><td>${inr(c.amount_inr)}</td>` +
+      `<td>${boolChip(c.recovered)}</td><td>${c.recovery_channel || "—"}</td>` +
+      `<td>${c.attempts_used}</td>` +
+      `<td>${c.razorpay_order_ids.length ? c.razorpay_order_ids.join(", ") : "—"}</td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+  box.appendChild(scroll);
+}
+
+// ----------------------------------------------------------------------------
+// pipeline table (client-side filtered)
+// ----------------------------------------------------------------------------
+function renderPipeline() {
+  if (!overviewData) return;
+  const split = $("#filter-split").value;
+  const outcome = $("#filter-outcome").value;
+  let rows = overviewData.cases;
+  if (split !== "all") rows = rows.filter((r) => r.split === split);
+  if (outcome === "unrecovered") rows = rows.filter((r) => r.recovered === false);
+  else if (outcome === "recovered") rows = rows.filter((r) => r.recovered === true);
+  else if (outcome === "guardrail") rows = rows.filter((r) => (r.guardrail_violations || 0) > 0);
+
+  const tbody = $("#pipeline-table tbody");
+  tbody.innerHTML = "";
+  rows.forEach((r) => {
+    const tr = el("tr", "clickable");
+    tr.innerHTML =
+      `<td>${r.case_id}</td><td>${inr(r.amount_inr)}</td><td>${r.subscription_state}</td>` +
+      `<td>${r.attempt_count}</td><td>${r.observed_reason}</td><td>${r.split}</td>` +
+      `<td>${r.true_cause}</td><td>${boolChip(r.recovered)}</td>` +
+      `<td>${r.recovery_channel || "—"}</td>` +
+      `<td>${r.guardrail_violations === null ? "—" : r.guardrail_violations}</td>`;
+    tr.addEventListener("click", () => openCase(r.case_id));
+    tbody.appendChild(tr);
+  });
+  $("#pipeline-count").textContent = `${rows.length} case${rows.length === 1 ? "" : "s"} shown`;
+}
+
+// ----------------------------------------------------------------------------
+// case detail
+// ----------------------------------------------------------------------------
+function populateCaseSelect(cases) {
+  const sel = $("#case-select");
+  sel.innerHTML = '<option value="">— select a case —</option>';
+  cases
+    .map((c) => c.case_id)
+    .sort()
+    .forEach((id) => {
+      const o = el("option", null, id);
+      o.value = id;
+      sel.appendChild(o);
+    });
+  sel.addEventListener("change", () => {
+    if (sel.value) openCase(sel.value);
+  });
+}
+
+function openCase(caseId) {
+  document.querySelector('.tab-btn[data-tab="case"]').click();
+  $("#case-select").value = caseId;
+  loadCase(caseId);
+}
+
+async function loadCase(caseId) {
+  $("#escalate-result").innerHTML = "";
+  $("#escalate-error").hidden = true;
+  let data;
+  try {
+    const resp = await fetch(`/api/case/${encodeURIComponent(caseId)}`);
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      showGlobalError(body.detail || `Failed to load case (HTTP ${resp.status})`);
+      return;
+    }
+    data = await resp.json();
+  } catch (e) {
+    showGlobalError("Could not reach the dashboard API.");
+    return;
+  }
+  $("#global-error").hidden = true;
+  $("#case-body").hidden = false;
+  renderCaseMetrics(data);
+  renderCaseOutcome(data);
+  renderCaseObserved(data);
+  renderAuditTimeline(data.audit_events);
+  renderLatestPromise(data.latest_promise);
+}
+
+function renderCaseMetrics(d) {
+  const row = $("#case-metrics");
+  row.innerHTML = "";
+  const cards = [
+    ["Amount", inr(d.amount_inr)],
+    ["Subscription state", d.subscription_state],
+    ["Attempt count", d.attempt_count],
+    ["Retry / escalation eligible", `${d.is_retry_eligible ? "Y" : "N"} / ${d.is_escalation_eligible ? "Y" : "N"}`],
+  ];
+  cards.forEach(([label, value]) => {
+    const c = el("div", "metric-card");
+    c.appendChild(el("div", "label", label));
+    c.appendChild(el("div", "value", value));
+    row.appendChild(c);
+  });
+}
+
+function renderCaseOutcome(d) {
+  const p = $("#case-outcome");
+  const r = d.system_result;
+  if (!r) {
+    p.textContent = "No system result for this case yet — run `python scripts/run_system_eval.py`.";
+    return;
+  }
+  const parts = [r.recovered ? "✅ Recovered" : "❌ Not recovered"];
+  if (r.recovery_channel) parts.push("via " + r.recovery_channel);
+  if (r.guardrail_violations) parts.push(`⚠️ ${r.guardrail_violations} guardrail violation(s)`);
+  p.textContent = "System outcome: " + parts.join(" · ");
+}
+
+function renderCaseObserved(d) {
+  const o = d.observed;
+  $("#case-observed").innerHTML =
+    `<div class="kv-grid">` +
+    `<div class="kv"><div class="k">Observed code</div><div class="v">${o.code}</div></div>` +
+    `<div class="kv"><div class="k">Reason</div><div class="v">${o.reason}</div></div>` +
+    `<div class="kv"><div class="k">Source / step</div><div class="v">${o.source} / ${o.step}</div></div>` +
+    `<div class="kv"><div class="k">Ground-truth cause (hidden from system)</div><div class="v">${d.true_cause}</div></div>` +
+    `</div>`;
+}
+
+const EVENT_LABELS = {
+  detected: "🔍 detected",
+  diagnosis: "🧠 diagnosis",
+  diagnosis_result: "🧠 diagnosis",
+  policy_decision: "⚖️ policy decision",
+  retry_attempt: "🔁 retry attempt",
+  guardrail_violation: "🚨 guardrail violation",
+  escalation: "💬 escalation",
+  promise_extraction: "🤝 promise extraction",
+  clarify: "❓ clarify",
+  stop: "🛑 stop",
+  final_outcome: "🏁 final outcome",
+};
+
+function renderAuditTimeline(events) {
+  const tbody = $("#audit-table tbody");
+  tbody.innerHTML = "";
+  const empty = $("#audit-empty");
+  if (!events || !events.length) {
+    empty.hidden = false;
+    empty.textContent =
+      "No audit events for this case yet — run `python scripts/run_system_eval.py` or `python scripts/replay_case.py <id>`.";
+    $("#audit-table").hidden = true;
+    return;
+  }
+  empty.hidden = true;
+  $("#audit-table").hidden = false;
+  events.forEach((e) => {
+    const tr = el("tr");
+    const when = e.created_at ? e.created_at.replace("T", " ").slice(0, 19) : "—";
+    const label = EVENT_LABELS[e.event_type] || e.event_type;
+    tr.innerHTML =
+      `<td>${when}</td><td>${label}</td>` +
+      `<td><code>${escapeHtml(JSON.stringify(e.payload))}</code></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderLatestPromise(promise) {
+  $("#latest-promise").textContent = promise ? JSON.stringify(promise, null, 2) : "(none extracted for this case)";
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+// ----------------------------------------------------------------------------
+// live escalation
+// ----------------------------------------------------------------------------
+function setupEscalation() {
+  const backendSel = $("#escalate-backend");
+  $("#escalate-btn").addEventListener("click", async () => {
+    const caseId = $("#case-select").value;
+    if (!caseId) return;
+    const btn = $("#escalate-btn");
+    const errBox = $("#escalate-error");
+    const result = $("#escalate-result");
+    errBox.hidden = true;
+    result.innerHTML = "";
+    btn.disabled = true;
+    btn.textContent = "Talking to the model…";
+    try {
+      const resp = await fetch(`/api/case/${encodeURIComponent(caseId)}/escalate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ backend: backendSel.value }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        errBox.textContent = body.detail || `Request failed (HTTP ${resp.status})`;
+        errBox.hidden = false;
+        return;
+      }
+      renderTranscript(body);
+    } catch (e) {
+      errBox.textContent = "Request failed at the network level — is the server still running?";
+      errBox.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Run live escalation conversation";
+    }
+  });
+}
+
+function renderTranscript(body) {
+  const result = $("#escalate-result");
+  result.innerHTML = "";
+  const gt = body.ground_truth;
+  const meta = el("p", "gt-line");
+  meta.innerHTML =
+    `<strong>Scenario:</strong> <code>${body.scenario_category}</code> &nbsp;&middot;&nbsp; ` +
+    `<strong>backend:</strong> ${body.backend_used}${body.model ? ` (${body.model})` : ""} &nbsp;&middot;&nbsp; ` +
+    `<strong>ground truth:</strong> has_promise=${gt.has_promise}, amount=${gt.promised_amount_inr}, ` +
+    `date_offset_days=${gt.promised_date_offset_days}`;
+  result.appendChild(meta);
+
+  const wrap = el("div", "transcript");
+  body.transcript.forEach((turn) => {
+    const t = el("div", "turn " + (turn.role === "agent" ? "agent" : "customer"));
+    t.appendChild(el("span", "who", turn.role === "agent" ? "Agent" : "Customer"));
+    t.appendChild(document.createTextNode(turn.text));
+    wrap.appendChild(t);
+  });
+  result.appendChild(wrap);
+}
+
+// ----------------------------------------------------------------------------
+// init
+// ----------------------------------------------------------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  setupTabs();
+  setupEscalation();
+  $("#filter-split").addEventListener("change", renderPipeline);
+  $("#filter-outcome").addEventListener("change", renderPipeline);
+  loadOverview();
+});

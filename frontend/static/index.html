@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revenue Recovery Engine</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <p class="kicker">Razorpay AI Buildathon &mdash; Track 03</p>
+      <h1>AI Subscription Payment Recovery Engine</h1>
+      <p class="sub">
+        Detect &rarr; diagnose &rarr; decide (deterministic policy) &rarr; retry &rarr; escalate (Hinglish agent)
+        &rarr; extract promise &rarr; audit &rarr; measure &#8377; recovered vs. a naive baseline.
+      </p>
+      <p id="backend-line" class="backend-line"></p>
+    </div>
+  </header>
+
+  <nav class="tabs wrap">
+    <button class="tab-btn active" data-tab="overview">Overview &amp; comparison</button>
+    <button class="tab-btn" data-tab="case">Case detail</button>
+  </nav>
+
+  <main class="wrap">
+    <p id="global-error" class="error-box" hidden></p>
+
+    <!-- ============================ OVERVIEW ============================ -->
+    <section id="tab-overview" class="tab-panel active">
+      <div id="metric-cards" class="card-row"></div>
+
+      <h2>Baseline vs. system (held-out)</h2>
+      <div id="comparison" class="callout"></div>
+
+      <h2>Rubric progression &mdash; escalation agent quality</h2>
+      <p class="note">
+        Locked 3-criterion LLM-judge rubric (tone naturalness, task success, code-switch
+        quality), scored 1&ndash;5. Same prompt + judge across every bar.
+      </p>
+      <div id="rubric-chart" class="bar-chart"></div>
+      <div id="rubric-comparison"></div>
+      <p id="judge-discrimination" class="note"></p>
+
+      <h2>Case pipeline</h2>
+      <div class="filters">
+        <label>Split
+          <select id="filter-split">
+            <option value="all">all</option>
+            <option value="dev">dev</option>
+            <option value="held-out">held-out</option>
+          </select>
+        </label>
+        <label>Outcome (system)
+          <select id="filter-outcome">
+            <option value="all">all</option>
+            <option value="unrecovered">unrecovered</option>
+            <option value="recovered">recovered</option>
+            <option value="guardrail">guardrail violation</option>
+          </select>
+        </label>
+        <span id="pipeline-count" class="note"></span>
+      </div>
+      <div class="table-scroll">
+        <table id="pipeline-table">
+          <thead>
+            <tr>
+              <th>Case</th><th>&#8377;</th><th>State</th><th>Attempts</th>
+              <th>Observed reason</th><th>Split</th><th>True cause</th>
+              <th>Recovered</th><th>Channel</th><th>Guardrail</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h2>Slice analysis</h2>
+      <p class="note">
+        Recovery rate + uplift by failure category, amount bucket, and attempt count &mdash;
+        the headline number alone hides where routing earns its keep vs. where a case is
+        genuinely hard to recover.
+      </p>
+      <div id="slices"></div>
+
+      <h2>Promise extraction (independent eval)</h2>
+      <div id="promise" class="callout"></div>
+
+      <h2>Razorpay test-mode integration (live-verified subsample)</h2>
+      <div id="razorpay"></div>
+    </section>
+
+    <!-- ============================ CASE DETAIL ============================ -->
+    <section id="tab-case" class="tab-panel">
+      <label class="case-picker">Case
+        <select id="case-select"></select>
+      </label>
+
+      <div id="case-body" hidden>
+        <div id="case-metrics" class="card-row"></div>
+        <p id="case-outcome" class="outcome-line"></p>
+
+        <h3>Observed failure &amp; ground truth</h3>
+        <div id="case-observed" class="callout"></div>
+
+        <h3>Audit timeline</h3>
+        <p class="note">
+          Append-only &mdash; a case can appear across several runs; nothing is ever overwritten.
+        </p>
+        <div class="table-scroll">
+          <table id="audit-table">
+            <thead><tr><th>Time</th><th>Event</th><th>Details</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p id="audit-empty" class="note" hidden></p>
+
+        <h3>Latest extracted promise</h3>
+        <pre id="latest-promise" class="code-block"></pre>
+
+        <h3>Escalation conversation (live)</h3>
+        <p class="note">
+          Runs a real server-side conversation for this case. The customer side is a
+          dialogue scenario picked deterministically from <code>case_id</code> + attempt number.
+        </p>
+        <div class="escalation-controls">
+          <label>Backend
+            <select id="escalate-backend">
+              <option value="prompted">Local Ollama &mdash; qwen2.5:7b (rubric 3.63/5)</option>
+              <option value="groq_prompted">Groq cloud &mdash; qwen/qwen3.8-27b (rubric 4.63/5)</option>
+            </select>
+          </label>
+          <button id="escalate-btn">Run live escalation conversation</button>
+        </div>
+        <p id="escalate-error" class="error-box" hidden></p>
+        <div id="escalate-result"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

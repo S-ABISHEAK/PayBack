@@ -12,8 +12,9 @@ xgboost
 # Storage
 sqlalchemy>=2
 
-# Dashboard
-streamlit
+# Dashboard (FastAPI + vanilla HTML/CSS/JS frontend in frontend/)
+fastapi>=0.110
+uvicorn[standard]>=0.29
 
 # Razorpay integration
 razorpay
