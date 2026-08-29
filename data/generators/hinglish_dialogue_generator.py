@@ -167,10 +167,25 @@ HARD_TEMPLATES = [
 ]
 
 
-def instantiate_scenario(template, scenario_id: str, rng: random.Random) -> DialogueScenario:
+def instantiate_scenario(
+    template,
+    scenario_id: str,
+    rng: random.Random,
+    amount: float | None = None,
+    days: int | None = None,
+) -> DialogueScenario:
+    """`amount`/`days` are synthetic by default (drawn from `rng`) — this is
+    what the frozen evaluation set (generate_dialogue_scenarios, never passes
+    overrides) needs: a fixed, reproducible scenario shape independent of any
+    real case. Pass explicit overrides only for a live, case-specific
+    conversation (see src.escalation.agent.select_live_scenario), where the
+    scenario should actually be about that case's real amount rather than an
+    unrelated synthetic one."""
     category, persona, has_promise, context_fmt, turns_fmt, date_offset = template
-    amount = round(rng.choice([199, 299, 499, 999, 1499, 1999, 2999]) + rng.uniform(-10, 10), 2)
-    days = rng.randint(1, 10)
+    if amount is None:
+        amount = round(rng.choice([199, 299, 499, 999, 1499, 1999, 2999]) + rng.uniform(-10, 10), 2)
+    if days is None:
+        days = rng.randint(1, 10)
     name = rng.choice(NAMES)
 
     return DialogueScenario(

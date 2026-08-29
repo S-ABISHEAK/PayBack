@@ -14,7 +14,6 @@ Run from the repo root:
 from __future__ import annotations
 
 import os
-import random
 import sys
 from pathlib import Path
 
@@ -34,8 +33,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Literal
 
-from data.generators.hinglish_dialogue_generator import TEMPLATES, instantiate_scenario
-from frontend.loaders import build_case_detail, build_overview
+from frontend.loaders import build_case_detail, build_overview, load_cases
+from src.escalation.agent import select_live_scenario
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -73,25 +72,21 @@ class EscalateRequest(BaseModel):
     backend: Literal["prompted", "groq_prompted"] = "prompted"
 
 
-def _build_scenario(case_id: str, attempt_number: int = 1):
-    """Same public building blocks the agent's own ``_select_scenario`` uses
-    internally — deliberately not reaching into the protected method."""
-    rng = random.Random(f"{case_id}:{attempt_number}")
-    template = rng.choice(TEMPLATES)
-    return instantiate_scenario(template, f"live_{case_id}_{attempt_number}", rng)
-
-
 @app.post("/api/case/{case_id}/escalate")
 def api_escalate(case_id: str, req: EscalateRequest):
     # Confirm the case exists before spending a model call on it.
     try:
         detail = build_case_detail(case_id)
+        case = load_cases()[case_id]
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Unknown case_id {case_id!r}")
 
-    scenario = _build_scenario(case_id)
+    # select_live_scenario uses this case's real amount_inr, not a synthetic
+    # one — see its docstring for the bug this replaced (a live conversation
+    # about case X's failure would show an unrelated random amount).
+    scenario = select_live_scenario(case, attempt_number=1)
 
     try:
         if req.backend == "groq_prompted":

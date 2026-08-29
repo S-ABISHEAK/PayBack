@@ -131,6 +131,31 @@ def _is_degenerate(text: str, prior_agent_texts: list[str]) -> bool:
     return any(SequenceMatcher(None, text, prior).ratio() > _NEAR_DUPLICATE_RATIO for prior in prior_agent_texts)
 
 
+def select_live_scenario(case: PaymentCase, attempt_number: int) -> DialogueScenario:
+    """Picks a dialogue template deterministically from (case_id, attempt_number)
+    — same reproducible selection the frozen evaluation set's generation uses —
+    but instantiates it with THIS case's real amount_inr, not a synthetic one.
+
+    Public and shared (not agent-instance state) so both the escalation agents'
+    own escalate() and any external caller building a live, case-specific
+    conversation (e.g. the dashboard's "run live escalation" button) use the
+    exact same logic instead of two copies that could silently drift apart —
+    which is how the amount-mismatch bug this replaces happened in the first
+    place: instantiate_scenario() always drew its own random amount regardless
+    of which case was passed in, so a demo of case X's ₹503 failure would show
+    an unrelated ₹306 in the actual conversation. `days_overdue` stays
+    synthetic — PaymentCase has no equivalent real "days since failure" field
+    to substitute."""
+    rng = random.Random(f"{case.case_id}:{attempt_number}")
+    template = rng.choice(TEMPLATES)
+    return instantiate_scenario(
+        template,
+        f"live_{case.case_id}_{attempt_number}",
+        rng,
+        amount=case.context.amount_inr,
+    )
+
+
 class _ConversationalEscalationAgent(EscalationAgent):
     """Shared scenario-driving logic for any prompted (not fine-tuned) Hinglish
     agent — subclasses only need to implement `_call`, which sends
@@ -160,9 +185,7 @@ class _ConversationalEscalationAgent(EscalationAgent):
         return reply
 
     def _select_scenario(self, case: PaymentCase, attempt_number: int) -> DialogueScenario:
-        rng = random.Random(f"{case.case_id}:{attempt_number}")
-        template = rng.choice(TEMPLATES)
-        return instantiate_scenario(template, f"live_{case.case_id}_{attempt_number}", rng)
+        return select_live_scenario(case, attempt_number)
 
     def run_scenario(self, scenario: DialogueScenario) -> list[dict]:
         """Runs one scenario end to end and returns the transcript — used both
