@@ -77,6 +77,45 @@ def api_overview():
             row["recovered"] = live["resolved"]
             row["recovery_channel"] = live["recovery_channel"]
             row["live_demo"] = True
+
+    # Append any real orders created via the live "Run live retry attempt"
+    # button to the Razorpay evidence table — otherwise that section stays
+    # frozen at whatever scripts/verify_razorpay_integration.py produced once,
+    # even while new real orders are being created right next to it in Case
+    # Detail. Tagged live_demo:true, same as the pipeline overlay above, so
+    # it's clear which rows are the original frozen subsample.
+    live_retry_rows = []
+    for case_id, live in _LIVE_RESULTS.items():
+        if live.get("kind") != "retry" or not live.get("razorpay_order_id"):
+            continue
+        case = load_cases().get(case_id)
+        row = next((r for r in overview["cases"] if r["case_id"] == case_id), None)
+        live_retry_rows.append(
+            {
+                "case_id": case_id,
+                "amount_inr": case.context.amount_inr if case else None,
+                "recovered": live["resolved"],
+                "recovery_channel": live["recovery_channel"],
+                "attempts_used": (row["attempt_count"] + 1) if row else 1,
+                "razorpay_order_ids": [live["razorpay_order_id"]],
+                "live_demo": True,
+            }
+        )
+    if live_retry_rows:
+        rz = overview["razorpay_integration"] or {
+            "n_cases": 0,
+            "n_real_razorpay_orders_created": 0,
+            "cases": [],
+        }
+        existing_ids = {c["case_id"] for c in rz["cases"]}
+        for row in live_retry_rows:
+            if row["case_id"] not in existing_ids:
+                rz["cases"].append(row)
+                rz["n_cases"] += 1
+                existing_ids.add(row["case_id"])
+            rz["n_real_razorpay_orders_created"] += 1
+        overview["razorpay_integration"] = rz
+
     return overview
 
 

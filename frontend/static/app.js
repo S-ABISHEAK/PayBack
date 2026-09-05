@@ -187,8 +187,7 @@ function renderComparison(c) {
   const box = $("#comparison");
   if (!c) {
     box.className = "info-box";
-    box.textContent =
-      "Run `python scripts/run_baseline_eval.py` and `python scripts/run_system_eval.py` to populate this.";
+    box.textContent = "Baseline and system evaluation results haven't been generated yet.";
     return;
   }
   box.className = "callout";
@@ -276,7 +275,7 @@ function renderSlices(slices) {
   box.innerHTML = "";
   if (!slices) {
     box.className = "info-box";
-    box.textContent = "Run `python scripts/run_slice_analysis.py` to populate this (needs both eval runs first).";
+    box.textContent = "Slice analysis hasn't been generated yet — it depends on the baseline and system evaluation results.";
     return;
   }
   box.className = "";
@@ -314,7 +313,7 @@ function renderPromise(p) {
   const box = $("#promise");
   if (!p) {
     box.className = "info-box";
-    box.textContent = "Run `python scripts/evaluate_promise_extraction.py` to populate this.";
+    box.textContent = "Promise extraction evaluation hasn't been run yet.";
     return;
   }
   const warn = p.backend === "rule_based";
@@ -340,8 +339,7 @@ function renderRazorpay(rz) {
   box.innerHTML = "";
   if (!rz) {
     box.className = "info-box";
-    box.textContent =
-      "Run `python scripts/verify_razorpay_integration.py` (needs RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).";
+    box.textContent = "Live Razorpay test-mode verification hasn't been run yet — requires Razorpay API keys to be configured.";
     return;
   }
   box.className = "";
@@ -350,9 +348,11 @@ function renderRazorpay(rz) {
       const p = el("p", "note");
       p.innerHTML =
         `<strong>${rz.n_real_razorpay_orders_created} real Razorpay test-mode orders</strong> created across ` +
-        `${rz.n_cases} held-out cases, each gated by the deterministic policy engine (a policy-decided ` +
-        "escalate-only case correctly creates zero orders). Frozen headline numbers still use the " +
-        "byte-reproducible stub executor.";
+        `${rz.n_cases} cases, each gated by the deterministic policy engine (a policy-decided ` +
+        "escalate-only case correctly creates zero orders). Rows tagged " +
+        '<span class="live-tag">live demo</span> were triggered just now from Case detail, in this ' +
+        "session — everything else is the original frozen subsample. Frozen headline numbers still use " +
+        "the byte-reproducible stub executor.";
       return p;
     })()
   );
@@ -363,8 +363,9 @@ function renderRazorpay(rz) {
   const tbody = el("tbody");
   rz.cases.forEach((c) => {
     const tr = el("tr");
+    const liveTag = c.live_demo ? ' <span class="live-tag">live demo</span>' : "";
     tr.innerHTML =
-      `<td>${c.case_id}</td><td>${inr(c.amount_inr)}</td>` +
+      `<td>${c.case_id}${liveTag}</td><td>${inr(c.amount_inr)}</td>` +
       `<td>${boolChip(c.recovered)}</td><td>${c.recovery_channel || "—"}</td>` +
       `<td>${c.attempts_used}</td>` +
       `<td>${c.razorpay_order_ids.length ? c.razorpay_order_ids.join(", ") : "—"}</td>`;
@@ -490,7 +491,7 @@ function renderCaseOutcome(d) {
   const r = d.system_result;
   let frozenLine;
   if (!r) {
-    frozenLine = "No frozen system result for this case — run `python scripts/run_system_eval.py`.";
+    frozenLine = "No frozen system result available for this case yet.";
   } else {
     const parts = [r.recovered ? "Recovered" : "Not recovered"];
     if (r.recovery_channel) parts.push("via " + r.recovery_channel);
@@ -567,8 +568,7 @@ function renderAuditTimeline(events) {
   const empty = $("#audit-empty");
   if (!events || !events.length) {
     empty.hidden = false;
-    empty.textContent =
-      "No audit events for this case yet — run `python scripts/run_system_eval.py` or `python scripts/replay_case.py <id>`.";
+    empty.textContent = "No audit events recorded for this case yet.";
     $("#audit-table").hidden = true;
     return;
   }
