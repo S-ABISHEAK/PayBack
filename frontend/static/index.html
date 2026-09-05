@@ -3,25 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Revenue Recovery Engine</title>
+  <title>PayBack — Revenue Recovery Engine</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+  <div class="bg-fx" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+
   <header class="site-header">
+    <div class="wrap header-inner">
+      <div class="brand">
+        <span class="brand-mark">₹</span>
+        <div class="brand-text">
+          <p class="kicker">Razorpay AI Buildathon &middot; Track 03 &middot; AI Revenue Recovery</p>
+          <h1>PayBack <span class="h1-sub">AI Subscription Payment Recovery Engine</span></h1>
+        </div>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" title="Toggle light / dark theme" aria-label="Toggle theme">
+        <span class="theme-icon">Dark</span>
+      </button>
+    </div>
     <div class="wrap">
-      <p class="kicker">Razorpay AI Buildathon &mdash; Track 03</p>
-      <h1>AI Subscription Payment Recovery Engine</h1>
       <p class="sub">
-        Detect &rarr; diagnose &rarr; decide (deterministic policy) &rarr; retry &rarr; escalate (Hinglish agent)
-        &rarr; extract promise &rarr; audit &rarr; measure &#8377; recovered vs. a naive baseline.
+        Detect &rarr; diagnose &rarr; decide <em>(deterministic policy, no LLM)</em> &rarr; retry &rarr; escalate
+        <em>(Hinglish agent)</em> &rarr; extract promise &rarr; audit &rarr; measure &#8377; recovered vs. a naive baseline.
       </p>
       <p id="backend-line" class="backend-line"></p>
     </div>
   </header>
 
-  <nav class="tabs wrap">
-    <button class="tab-btn active" data-tab="overview">Overview &amp; comparison</button>
-    <button class="tab-btn" data-tab="case">Case detail</button>
+  <nav class="tabs-wrap wrap">
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="overview">Overview &amp; comparison</button>
+      <button class="tab-btn" data-tab="case">Case detail</button>
+      <span class="tab-glider"></span>
+    </div>
   </nav>
 
   <main class="wrap">
@@ -29,21 +44,26 @@
 
     <!-- ============================ OVERVIEW ============================ -->
     <section id="tab-overview" class="tab-panel active">
-      <div id="metric-cards" class="card-row"></div>
+      <div id="metric-cards" class="card-row hero-cards"></div>
 
-      <h2>Baseline vs. system (held-out)</h2>
+      <h2>Baseline vs. system <span class="h-tag">held-out</span></h2>
       <div id="comparison" class="callout"></div>
 
-      <h2>Rubric progression &mdash; escalation agent quality</h2>
+      <h2>Rubric progression <span class="h-tag">escalation agent quality</span></h2>
       <p class="note">
         Locked 3-criterion LLM-judge rubric (tone naturalness, task success, code-switch
         quality), scored 1&ndash;5. Same prompt + judge across every bar.
       </p>
       <div id="rubric-chart" class="bar-chart"></div>
       <div id="rubric-comparison"></div>
-      <p id="judge-discrimination" class="note"></p>
+      <p id="judge-discrimination" class="note callout-mini"></p>
 
       <h2>Case pipeline</h2>
+      <p class="note">
+        Recovered / Channel come from the frozen batch eval, except rows marked
+        <span class="live-tag">live demo</span> — those show the outcome of a
+        live escalation conversation you ran from Case detail, for this session only.
+      </p>
       <div class="filters">
         <label>Split
           <select id="filter-split">
@@ -60,7 +80,7 @@
             <option value="guardrail">guardrail violation</option>
           </select>
         </label>
-        <span id="pipeline-count" class="note"></span>
+        <span id="pipeline-count" class="note pipeline-count-pill"></span>
       </div>
       <div class="table-scroll">
         <table id="pipeline-table">
@@ -83,10 +103,10 @@
       </p>
       <div id="slices"></div>
 
-      <h2>Promise extraction (independent eval)</h2>
+      <h2>Promise extraction <span class="h-tag">independent eval</span></h2>
       <div id="promise" class="callout"></div>
 
-      <h2>Razorpay test-mode integration (live-verified subsample)</h2>
+      <h2>Razorpay test-mode integration <span class="h-tag">live-verified</span></h2>
       <div id="razorpay"></div>
     </section>
 
@@ -118,25 +138,46 @@
         <h3>Latest extracted promise</h3>
         <pre id="latest-promise" class="code-block"></pre>
 
-        <h3>Escalation conversation (live)</h3>
+        <h3>Retry attempt <span class="h-tag">live &middot; Razorpay test-mode API</span></h3>
+        <p class="note" id="retry-note">
+          Creates a real Order against Razorpay's test-mode API for this case (real order ID, real
+          API auth, real response) — the success/failure outcome is drawn from the same synthetic
+          probability model the offline stub uses, since a full checkout flow needs a client-side
+          payment page this batch/demo evaluator doesn't run.
+        </p>
+        <div class="escalation-controls">
+          <button id="retry-btn">Run live retry attempt</button>
+        </div>
+        <p id="retry-error" class="error-box" hidden></p>
+        <div id="retry-result"></div>
+
+        <h3>Escalation conversation <span class="h-tag">live</span></h3>
         <p class="note">
           Runs a real server-side conversation for this case. The customer side is a
-          dialogue scenario picked deterministically from <code>case_id</code> + attempt number.
+          dialogue scenario picked deterministically from <code>case_id</code> + attempt number,
+          using this case's real amount.
         </p>
         <div class="escalation-controls">
           <label>Backend
             <select id="escalate-backend">
-              <option value="prompted">Local Ollama &mdash; qwen2.5:7b (rubric 3.63/5)</option>
-              <option value="groq_prompted">Groq cloud &mdash; qwen/qwen3.8-27b (rubric 4.63/5)</option>
+              <option value="groq_prompted" selected>Groq cloud &mdash; qwen/qwen3.8-27b (rubric 4.63/5) &middot; fast</option>
+              <option value="prompted">Local Ollama &mdash; qwen2.5:7b (rubric 3.63/5) &middot; slow (~1-2 min)</option>
             </select>
           </label>
           <button id="escalate-btn">Run live escalation conversation</button>
         </div>
+        <p id="escalate-hint" class="note escalate-hint" hidden></p>
         <p id="escalate-error" class="error-box" hidden></p>
         <div id="escalate-result"></div>
       </div>
     </section>
   </main>
+
+  <footer class="site-footer wrap">
+    <span>PayBack &middot; Razorpay AI Buildathon &middot; Track 03 &mdash; AI Revenue Recovery</span>
+    <span class="dot">&middot;</span>
+    <span>Deterministic policy engine, never an LLM, decides every action.</span>
+  </footer>
 
   <script src="/static/app.js"></script>
 </body>

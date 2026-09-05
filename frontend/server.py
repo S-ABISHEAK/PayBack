@@ -42,6 +42,19 @@ app = FastAPI(title="Revenue Recovery Engine — dashboard")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+# In-memory, per-server-process cache of the most recent live action per
+# case (an escalation conversation OR a real Razorpay test-mode retry) — NOT
+# persisted to disk, NOT written back to
+# evaluation/reports/system_case_results.jsonl. That frozen file is what the
+# reproducible headline uplift number depends on and must never be mutated by
+# a demo click; this cache exists purely so the dashboard can (a) show a live
+# run's own outcome next to the frozen one instead of just discarding it, and
+# (b) restore the transcript/retry result when you navigate away from a case
+# and back, rather than silently losing it. Each entry carries "kind":
+# "escalation" | "retry" so the frontend knows how to render it. Resets on
+# server restart, by design.
+_LIVE_RESULTS: dict[str, dict] = {}
+
 
 @app.get("/", include_in_schema=False)
 def index():
@@ -52,9 +65,19 @@ def index():
 def api_overview():
     backend = os.environ.get("MODEL_BACKEND", "stub")
     try:
-        return build_overview(current_model_backend=backend)
+        overview = build_overview(current_model_backend=backend)
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    # Overlay any live-demo outcomes onto the pipeline table rows — clearly
+    # tagged (live_demo: true) rather than silently replacing the frozen
+    # value, so the two are never confused.
+    for row in overview["cases"]:
+        live = _LIVE_RESULTS.get(row["case_id"])
+        if live:
+            row["recovered"] = live["resolved"]
+            row["recovery_channel"] = live["recovery_channel"]
+            row["live_demo"] = True
+    return overview
 
 
 @app.get("/api/case/{case_id}")
@@ -65,6 +88,9 @@ def api_case(case_id: str):
         raise HTTPException(status_code=503, detail=str(e))
     if detail is None:
         raise HTTPException(status_code=404, detail=f"Unknown case_id {case_id!r}")
+    # Restores a previous live conversation or retry (if any) so switching
+    # cases and coming back doesn't lose it — see _LIVE_RESULTS above.
+    detail["live_result"] = _LIVE_RESULTS.get(case_id)
     return detail
 
 
@@ -106,7 +132,17 @@ def api_escalate(case_id: str, req: EscalateRequest):
     except Exception as e:  # e.g. a Groq HTTP timeout — a live demo must never hard-500
         raise HTTPException(status_code=502, detail=f"{e.__class__.__name__}: {e}")
 
-    return {
+    # Same outcome logic _ConversationalEscalationAgent.escalate() uses
+    # (resolved = a promise was made) — the frozen `recovered`/`channel`/
+    # `guardrail_violations` fields in the pipeline table come ONLY from
+    # evaluation/reports/system_case_results.jsonl (the batch eval run, using
+    # the deterministic stub executor, over held-out cases only) and are
+    # deliberately never mutated by a live demo click — this is that live
+    # run's own outcome, surfaced here instead, not written back to the
+    # frozen report.
+    resolved = scenario.ground_truth.has_promise
+    result = {
+        "kind": "escalation",
         "scenario_category": scenario.category,
         "ground_truth": {
             "has_promise": scenario.ground_truth.has_promise,
@@ -116,4 +152,50 @@ def api_escalate(case_id: str, req: EscalateRequest):
         "transcript": transcript,
         "backend_used": req.backend,
         "model": getattr(agent, "_model", None),
+        "resolved": resolved,
+        "recovery_channel": "escalation" if resolved else None,
     }
+    _LIVE_RESULTS[case_id] = result
+    return result
+
+
+@app.post("/api/case/{case_id}/retry")
+def api_retry(case_id: str):
+    """Runs one real retry attempt against Razorpay's actual test-mode API
+    (RazorpayTestModeRetryExecutor — a real Order is created; the
+    success/failure outcome is drawn from the same synthetic probability
+    model the stub executor uses, since a full checkout flow is out of scope
+    for a batch/demo evaluator — see src/retry/executor.py's own docstring).
+    This is the live counterpart to scripts/verify_razorpay_integration.py's
+    one-off subsample check — a single case, on demand, from the dashboard."""
+    key_id = os.environ.get("RAZORPAY_KEY_ID")
+    key_secret = os.environ.get("RAZORPAY_KEY_SECRET")
+    if not key_id or not key_secret:
+        raise HTTPException(
+            status_code=502,
+            detail="RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET not set — required to run a real retry.",
+        )
+    try:
+        case = load_cases()[case_id]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown case_id {case_id!r}")
+
+    from src.retry.executor import RazorpayTestModeRetryExecutor
+
+    try:
+        executor = RazorpayTestModeRetryExecutor(key_id=key_id, key_secret=key_secret)
+        retry_result = executor.execute_retry(case, attempt_number=case.context.attempt_count + 1)
+    except Exception as e:  # a live demo must never hard-500 on a network/API hiccup
+        raise HTTPException(status_code=502, detail=f"{e.__class__.__name__}: {e}")
+
+    result = {
+        "kind": "retry",
+        "resolved": retry_result.success,
+        "recovery_channel": "retry" if retry_result.success else None,
+        "razorpay_order_id": retry_result.razorpay_order_id,
+        "reason": retry_result.reason,
+    }
+    _LIVE_RESULTS[case_id] = result
+    return result

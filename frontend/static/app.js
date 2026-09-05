@@ -21,8 +21,48 @@ const boolChip = (v) => {
 };
 
 // ----------------------------------------------------------------------------
-// tabs
+// theme (persisted to localStorage; falls back silently if unavailable)
 // ----------------------------------------------------------------------------
+function setupTheme() {
+  const root = document.documentElement;
+  const icon = $("#theme-toggle .theme-icon");
+  let saved = null;
+  try {
+    saved = localStorage.getItem("payback-theme");
+  } catch (e) {
+    /* private-browsing / storage blocked — just default to light */
+  }
+  if (saved === "dark") {
+    root.setAttribute("data-theme", "dark");
+    if (icon) icon.textContent = "Light";
+  }
+  $("#theme-toggle").addEventListener("click", () => {
+    const isDark = root.getAttribute("data-theme") === "dark";
+    if (isDark) {
+      root.removeAttribute("data-theme");
+      if (icon) icon.textContent = "Dark";
+    } else {
+      root.setAttribute("data-theme", "dark");
+      if (icon) icon.textContent = "Light";
+    }
+    try {
+      localStorage.setItem("payback-theme", isDark ? "light" : "dark");
+    } catch (e) {
+      /* ignore — theme just won't persist across reloads */
+    }
+  });
+}
+
+// ----------------------------------------------------------------------------
+// tabs (pill nav with a sliding glider behind the active tab)
+// ----------------------------------------------------------------------------
+function moveGlider(btn) {
+  const glider = $(".tab-glider");
+  if (!glider || !btn) return;
+  glider.style.width = btn.offsetWidth + "px";
+  glider.style.transform = `translateX(${btn.offsetLeft - 5}px)`;
+}
+
 function setupTabs() {
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -31,8 +71,38 @@ function setupTabs() {
       document.querySelectorAll(".tab-panel").forEach((p) =>
         p.classList.toggle("active", p.id === "tab-" + tab)
       );
+      moveGlider(btn);
     });
   });
+  moveGlider($(".tab-btn.active"));
+  window.addEventListener("resize", () => moveGlider($(".tab-btn.active")));
+}
+
+// ----------------------------------------------------------------------------
+// small count-up animation for the headline metric numbers
+// ----------------------------------------------------------------------------
+function animateValue(node, targetText) {
+  const match = targetText.match(/^([^\d-]*)([\d,]+(?:\.\d+)?)([^\d]*)$/);
+  if (!match || document.body.dataset.reduceMotion === "1") {
+    node.textContent = targetText;
+    return;
+  }
+  const [, prefix, numStr, suffix] = match;
+  const target = parseFloat(numStr.replace(/,/g, ""));
+  const decimals = (numStr.split(".")[1] || "").length;
+  const duration = 700;
+  const start = performance.now();
+  function frame(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    const value = target * eased;
+    node.textContent = prefix + value.toLocaleString("en-IN", {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }) + suffix;
+    if (t < 1) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
 // ----------------------------------------------------------------------------
@@ -56,9 +126,10 @@ async function loadOverview() {
   $("#global-error").hidden = true;
 
   renderBackendLine(data.current_model_backend);
-  if (["prompted", "groq_prompted"].includes(data.current_model_backend)) {
-    $("#escalate-backend").value = data.current_model_backend;
-  }
+  // Deliberately NOT synced to the .env MODEL_BACKEND default (which stays
+  // "prompted"/local for the documented architecture) — the live-demo
+  // dropdown defaults to Groq (see index.html) since it's faster and scores
+  // higher, and shouldn't get silently reset back to Ollama on every reload.
   renderMetricCards(data);
   renderComparison(data.comparison);
   renderRubricChart(data.rubric_progression);
@@ -105,8 +176,10 @@ function renderMetricCards(data) {
   cards.forEach(([label, value]) => {
     const c = el("div", "metric-card");
     c.appendChild(el("div", "label", label));
-    c.appendChild(el("div", "value", value));
+    const valueNode = el("div", "value", "");
+    c.appendChild(valueNode);
     row.appendChild(c);
+    animateValue(valueNode, String(value));
   });
 }
 
@@ -255,7 +328,7 @@ function renderPromise(p) {
     "</div>";
   if (warn) {
     html +=
-      '<p class="note" style="margin-bottom:0">⚠️ Evaluated on the same hand-authored Hinglish vocabulary ' +
+      '<p class="note" style="margin-bottom:0">Evaluated on the same hand-authored Hinglish vocabulary ' +
       "the rule-based extractor's keyword rules were built from &mdash; an internal-consistency check, not " +
       "evidence of generalization. The real robustness test is the LLM-based extractor against agent-generated text.</p>";
   }
@@ -319,10 +392,11 @@ function renderPipeline() {
   tbody.innerHTML = "";
   rows.forEach((r) => {
     const tr = el("tr", "clickable");
+    const liveTag = r.live_demo ? ' <span class="live-tag">live demo</span>' : "";
     tr.innerHTML =
       `<td>${r.case_id}</td><td>${inr(r.amount_inr)}</td><td>${r.subscription_state}</td>` +
       `<td>${r.attempt_count}</td><td>${r.observed_reason}</td><td>${r.split}</td>` +
-      `<td>${r.true_cause}</td><td>${boolChip(r.recovered)}</td>` +
+      `<td>${r.true_cause}</td><td>${boolChip(r.recovered)}${liveTag}</td>` +
       `<td>${r.recovery_channel || "—"}</td>` +
       `<td>${r.guardrail_violations === null ? "—" : r.guardrail_violations}</td>`;
     tr.addEventListener("click", () => openCase(r.case_id));
@@ -357,8 +431,13 @@ function openCase(caseId) {
 }
 
 async function loadCase(caseId) {
+  // Clear immediately so the previous case's transcript/retry result never
+  // flashes while the new one loads — restored below from data.live_result
+  // if this case actually has a saved run (see server.py's _LIVE_RESULTS).
   $("#escalate-result").innerHTML = "";
   $("#escalate-error").hidden = true;
+  $("#retry-result").innerHTML = "";
+  $("#retry-error").hidden = true;
   let data;
   try {
     const resp = await fetch(`/api/case/${encodeURIComponent(caseId)}`);
@@ -379,6 +458,14 @@ async function loadCase(caseId) {
   renderCaseObserved(data);
   renderAuditTimeline(data.audit_events);
   renderLatestPromise(data.latest_promise);
+  updateRetryButton(data.is_retry_eligible);
+  if (data.live_result && data.live_result.kind === "escalation") {
+    renderTranscript(data.live_result);
+    $("#escalate-backend").value = data.live_result.backend_used;
+    $("#escalate-backend").dispatchEvent(new Event("change"));
+  } else if (data.live_result && data.live_result.kind === "retry") {
+    renderRetryResult(data.live_result);
+  }
 }
 
 function renderCaseMetrics(d) {
@@ -401,14 +488,52 @@ function renderCaseMetrics(d) {
 function renderCaseOutcome(d) {
   const p = $("#case-outcome");
   const r = d.system_result;
+  let frozenLine;
   if (!r) {
-    p.textContent = "No system result for this case yet — run `python scripts/run_system_eval.py`.";
-    return;
+    frozenLine = "No frozen system result for this case — run `python scripts/run_system_eval.py`.";
+  } else {
+    const parts = [r.recovered ? "Recovered" : "Not recovered"];
+    if (r.recovery_channel) parts.push("via " + r.recovery_channel);
+    if (r.guardrail_violations) parts.push(`${r.guardrail_violations} guardrail violation(s)`);
+    frozenLine = "Frozen batch eval: " + parts.join(" · ");
   }
-  const parts = [r.recovered ? "✅ Recovered" : "❌ Not recovered"];
-  if (r.recovery_channel) parts.push("via " + r.recovery_channel);
-  if (r.guardrail_violations) parts.push(`⚠️ ${r.guardrail_violations} guardrail violation(s)`);
-  p.textContent = "System outcome: " + parts.join(" · ");
+  p.innerHTML = `<div>${frozenLine}</div>`;
+  if (d.live_result) appendLiveOutcomeLine(p, d.live_result);
+}
+
+function appendLiveOutcomeLine(container, live) {
+  const existing = container.querySelector(".live-outcome-line");
+  if (existing) existing.remove();
+  let text;
+  if (live.kind === "retry") {
+    text =
+      "Live retry attempt (Razorpay test-mode): " +
+      (live.resolved ? "Succeeded" : "Failed") +
+      (live.razorpay_order_id ? ` · order ${live.razorpay_order_id}` : "");
+  } else {
+    text =
+      "Live demo run: " +
+      (live.resolved ? "Resolved via escalation" : "Not resolved") +
+      " · " + live.backend_used + (live.model ? ` (${live.model})` : "");
+  }
+  container.appendChild(el("div", "live-outcome-line", text));
+}
+
+// Reflects a just-completed live run immediately, without a full reload:
+// updates the case-outcome line here, and patches the in-memory pipeline
+// row (server.py's own /api/overview also overlays this from its session
+// cache, so a fresh page load stays consistent too).
+function reflectLiveOutcome(caseId, result) {
+  appendLiveOutcomeLine($("#case-outcome"), result);
+  if (overviewData) {
+    const row = overviewData.cases.find((c) => c.case_id === caseId);
+    if (row) {
+      row.recovered = result.resolved;
+      row.recovery_channel = result.recovery_channel;
+      row.live_demo = true;
+      renderPipeline();
+    }
+  }
 }
 
 function renderCaseObserved(d) {
@@ -423,17 +548,17 @@ function renderCaseObserved(d) {
 }
 
 const EVENT_LABELS = {
-  detected: "🔍 detected",
-  diagnosis: "🧠 diagnosis",
-  diagnosis_result: "🧠 diagnosis",
-  policy_decision: "⚖️ policy decision",
-  retry_attempt: "🔁 retry attempt",
-  guardrail_violation: "🚨 guardrail violation",
-  escalation: "💬 escalation",
-  promise_extraction: "🤝 promise extraction",
-  clarify: "❓ clarify",
-  stop: "🛑 stop",
-  final_outcome: "🏁 final outcome",
+  detected: "Detected",
+  diagnosis: "Diagnosis",
+  diagnosis_result: "Diagnosis",
+  policy_decision: "Policy decision",
+  retry_attempt: "Retry attempt",
+  guardrail_violation: "Guardrail violation",
+  escalation: "Escalation",
+  promise_extraction: "Promise extraction",
+  clarify: "Clarify",
+  stop: "Stop",
+  final_outcome: "Final outcome",
 };
 
 function renderAuditTimeline(events) {
@@ -469,10 +594,91 @@ function escapeHtml(s) {
 }
 
 // ----------------------------------------------------------------------------
+// live retry (real Razorpay test-mode API)
+// ----------------------------------------------------------------------------
+const RETRY_BTN_IDLE = "Run live retry attempt";
+const RETRY_BTN_BUSY = "Contacting Razorpay…";
+
+function updateRetryButton(isEligible) {
+  const btn = $("#retry-btn");
+  const note = $("#retry-note");
+  if (!isEligible) {
+    btn.disabled = true;
+    note.dataset.baseText = note.dataset.baseText || note.textContent;
+    note.textContent = "This case isn't retry-eligible, so there's nothing for the policy engine to route to retry.";
+  } else {
+    btn.disabled = false;
+    if (note.dataset.baseText) note.textContent = note.dataset.baseText;
+  }
+}
+
+function setupRetry() {
+  $("#retry-btn").addEventListener("click", async () => {
+    const caseId = $("#case-select").value;
+    if (!caseId) return;
+    const btn = $("#retry-btn");
+    const errBox = $("#retry-error");
+    const result = $("#retry-result");
+    errBox.hidden = true;
+    result.innerHTML = "";
+    btn.disabled = true;
+    btn.textContent = RETRY_BTN_BUSY;
+    try {
+      const resp = await fetch(`/api/case/${encodeURIComponent(caseId)}/retry`, { method: "POST" });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        errBox.textContent = body.detail || `Request failed (HTTP ${resp.status})`;
+        errBox.hidden = false;
+        return;
+      }
+      renderRetryResult(body);
+      reflectLiveOutcome(caseId, body);
+    } catch (e) {
+      errBox.textContent = "Request failed at the network level — is the server still running?";
+      errBox.hidden = false;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = RETRY_BTN_IDLE;
+    }
+  });
+}
+
+function renderRetryResult(body) {
+  const result = $("#retry-result");
+  result.innerHTML = "";
+  const banner = el("div", "outcome-banner " + (body.resolved ? "win" : "lose"));
+  banner.innerHTML =
+    `<span class="status-dot"></span>` +
+    `<span>${body.resolved ? "Retry succeeded" : "Retry failed"}${body.reason ? " — " + body.reason : ""}</span>`;
+  result.appendChild(banner);
+
+  const meta = el("p", "gt-line");
+  meta.innerHTML = body.razorpay_order_id
+    ? `<strong>Real Razorpay order created:</strong> <code>${body.razorpay_order_id}</code> — verifiable in the Razorpay test-mode dashboard.`
+    : "No order ID returned.";
+  result.appendChild(meta);
+}
+
+// ----------------------------------------------------------------------------
 // live escalation
 // ----------------------------------------------------------------------------
+const BTN_IDLE = "Run live escalation conversation";
+const BTN_BUSY = "Talking to the model…";
+
 function setupEscalation() {
   const backendSel = $("#escalate-backend");
+  const hint = $("#escalate-hint");
+  const updateHint = () => {
+    if (backendSel.value === "prompted") {
+      hint.textContent = "Local Ollama runs on CPU here — this can take 60-120 seconds. It's not stuck.";
+      hint.hidden = false;
+    } else {
+      hint.hidden = true;
+    }
+  };
+  backendSel.addEventListener("change", updateHint);
+  updateHint();
+
   $("#escalate-btn").addEventListener("click", async () => {
     const caseId = $("#case-select").value;
     if (!caseId) return;
@@ -482,7 +688,7 @@ function setupEscalation() {
     errBox.hidden = true;
     result.innerHTML = "";
     btn.disabled = true;
-    btn.textContent = "Talking to the model…";
+    btn.innerHTML = BTN_BUSY;
     try {
       const resp = await fetch(`/api/case/${encodeURIComponent(caseId)}/escalate`, {
         method: "POST",
@@ -496,12 +702,13 @@ function setupEscalation() {
         return;
       }
       renderTranscript(body);
+      reflectLiveOutcome(caseId, body);
     } catch (e) {
       errBox.textContent = "Request failed at the network level — is the server still running?";
       errBox.hidden = false;
     } finally {
       btn.disabled = false;
-      btn.textContent = "Run live escalation conversation";
+      btn.innerHTML = BTN_IDLE;
     }
   });
 }
@@ -509,6 +716,20 @@ function setupEscalation() {
 function renderTranscript(body) {
   const result = $("#escalate-result");
   result.innerHTML = "";
+
+  // This live run's own outcome — NOT the frozen pipeline table's
+  // recovered/channel/guardrail columns (those come only from the batch
+  // eval report and are never mutated by a demo click; see server.py).
+  const banner = el("div", "outcome-banner " + (body.resolved ? "win" : "lose"));
+  banner.innerHTML =
+    `<span class="status-dot"></span>` +
+    `<span>${
+      body.resolved
+        ? `Resolved via escalation — a payment promise was captured on this run.`
+        : `Not resolved on this run — no promise captured (category: ${body.scenario_category}).`
+    }</span>`;
+  result.appendChild(banner);
+
   const gt = body.ground_truth;
   const meta = el("p", "gt-line");
   meta.innerHTML =
@@ -519,8 +740,9 @@ function renderTranscript(body) {
   result.appendChild(meta);
 
   const wrap = el("div", "transcript");
-  body.transcript.forEach((turn) => {
+  body.transcript.forEach((turn, i) => {
     const t = el("div", "turn " + (turn.role === "agent" ? "agent" : "customer"));
+    t.style.animationDelay = i * 0.06 + "s";
     t.appendChild(el("span", "who", turn.role === "agent" ? "Agent" : "Customer"));
     t.appendChild(document.createTextNode(turn.text));
     wrap.appendChild(t);
@@ -532,7 +754,9 @@ function renderTranscript(body) {
 // init
 // ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", () => {
+  setupTheme();
   setupTabs();
+  setupRetry();
   setupEscalation();
   $("#filter-split").addEventListener("change", renderPipeline);
   $("#filter-outcome").addEventListener("change", renderPipeline);
